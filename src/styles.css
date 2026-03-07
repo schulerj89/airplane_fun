@@ -212,6 +212,63 @@ h1 {
   font-size: 1.15rem;
 }
 
+.game-tools {
+  position: absolute;
+  top: 7rem;
+  right: 1rem;
+  width: min(20rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tool-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.tool-actions .secondary-button {
+  width: 100%;
+  padding: 0.85rem 1rem;
+}
+
+.pause-banner,
+.debug-panel div {
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(10, 19, 33, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pause-banner {
+  text-align: center;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffde74;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.debug-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.debug-panel span {
+  display: block;
+  color: #a5bad0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.debug-panel strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1rem;
+}
+
 .mobile-controls {
   position: absolute;
   inset: auto 1rem 1rem 1rem;
@@ -273,12 +330,19 @@ h1 {
 @media (max-width: 800px) {
   .plane-grid,
   .plane-stat-grid,
-  .hud {
+  .hud,
+  .debug-panel,
+  .tool-actions {
     grid-template-columns: 1fr;
   }
 
   .title-card {
     padding: 1.25rem;
+  }
+
+  .game-tools {
+    top: auto;
+    bottom: 10rem;
   }
 
   .mobile-controls {

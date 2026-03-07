@@ -11,6 +11,17 @@ interface HudState {
   altitude: number;
 }
 
+interface DebugState {
+  fps: number;
+  frameTimeMs: number;
+  memoryUsageMb: number | null;
+  drawCalls: number;
+  triangles: number;
+  chunkCount: number;
+  enemyCount: number;
+  projectileCount: number;
+}
+
 export class UIController {
   private readonly root: HTMLElement;
   private readonly titleScreen: HTMLElement;
@@ -28,14 +39,28 @@ export class UIController {
   private readonly gameOverSummary: HTMLElement;
   private readonly launchButton: HTMLButtonElement;
   private readonly restartButton: HTMLButtonElement;
+  private readonly pauseButton: HTMLButtonElement;
+  private readonly startOverButton: HTMLButtonElement;
   private readonly mobileControls: HTMLElement;
+  private readonly gameTools: HTMLElement;
+  private readonly pauseBanner: HTMLElement;
+  private readonly fpsValue: HTMLElement;
+  private readonly frameTimeValue: HTMLElement;
+  private readonly memoryValue: HTMLElement;
+  private readonly drawCallsValue: HTMLElement;
+  private readonly trianglesValue: HTMLElement;
+  private readonly chunkCountValue: HTMLElement;
+  private readonly enemyCountValue: HTMLElement;
+  private readonly projectileCountValue: HTMLElement;
 
   constructor(
     container: HTMLElement,
     planeDefinitions: PlaneDefinition[],
     initialPlaneId: PlaneId,
     onLaunch: (planeId: PlaneId) => void,
-    onRestart: () => void
+    onRestart: () => void,
+    onPauseToggle: () => void,
+    onStartOver: () => void
   ) {
     this.root = document.createElement("div");
     this.root.className = "game-shell";
@@ -64,12 +89,29 @@ export class UIController {
           <div><span>Score</span><strong data-role="score"></strong></div>
           <div><span>Threat</span><strong data-role="wave"></strong></div>
         </section>
+        <section class="game-tools hidden" data-state="tools">
+          <div class="pause-banner hidden">Paused</div>
+          <div class="tool-actions">
+            <button class="secondary-button" type="button" data-role="pause-toggle">Pause</button>
+            <button class="secondary-button" type="button" data-role="start-over">Start Over</button>
+          </div>
+          <div class="debug-panel" aria-label="Debug panel">
+            <div><span>FPS</span><strong data-role="debug-fps"></strong></div>
+            <div><span>Frame</span><strong data-role="debug-frame-time"></strong></div>
+            <div><span>Memory</span><strong data-role="debug-memory"></strong></div>
+            <div><span>Draw Calls</span><strong data-role="debug-draw-calls"></strong></div>
+            <div><span>Triangles</span><strong data-role="debug-triangles"></strong></div>
+            <div><span>Chunks</span><strong data-role="debug-chunks"></strong></div>
+            <div><span>Enemies</span><strong data-role="debug-enemies"></strong></div>
+            <div><span>Shots</span><strong data-role="debug-projectiles"></strong></div>
+          </div>
+        </section>
         <section class="game-over hidden" data-state="game-over">
           <div class="title-card compact">
             <p class="eyebrow">Hull lost</p>
             <h2>Rearm and relaunch</h2>
             <p class="summary"></p>
-            <button class="secondary-button">Restart</button>
+            <button class="secondary-button" type="button" data-role="game-over-restart">Restart</button>
           </div>
         </section>
         <section class="mobile-controls hidden" data-state="controls">
@@ -88,7 +130,7 @@ export class UIController {
             </div>
           </div>
           <div class="control-stack">
-            <div class="control-hint">W/S throttle, arrows pitch, A/D yaw</div>
+            <div class="control-hint">W/S throttle, arrows pitch, A/D yaw, P pause, R restart</div>
             <button class="fire-button" data-action="fire">Fire</button>
           </div>
         </section>
@@ -110,8 +152,20 @@ export class UIController {
     this.gameOver = this.root.querySelector(".game-over") as HTMLElement;
     this.gameOverSummary = this.root.querySelector(".summary") as HTMLElement;
     this.launchButton = this.root.querySelector(".primary-button") as HTMLButtonElement;
-    this.restartButton = this.root.querySelector(".secondary-button") as HTMLButtonElement;
+    this.restartButton = this.root.querySelector('[data-role="game-over-restart"]') as HTMLButtonElement;
+    this.pauseButton = this.root.querySelector('[data-role="pause-toggle"]') as HTMLButtonElement;
+    this.startOverButton = this.root.querySelector('[data-role="start-over"]') as HTMLButtonElement;
     this.mobileControls = this.root.querySelector(".mobile-controls") as HTMLElement;
+    this.gameTools = this.root.querySelector(".game-tools") as HTMLElement;
+    this.pauseBanner = this.root.querySelector(".pause-banner") as HTMLElement;
+    this.fpsValue = this.root.querySelector('[data-role="debug-fps"]') as HTMLElement;
+    this.frameTimeValue = this.root.querySelector('[data-role="debug-frame-time"]') as HTMLElement;
+    this.memoryValue = this.root.querySelector('[data-role="debug-memory"]') as HTMLElement;
+    this.drawCallsValue = this.root.querySelector('[data-role="debug-draw-calls"]') as HTMLElement;
+    this.trianglesValue = this.root.querySelector('[data-role="debug-triangles"]') as HTMLElement;
+    this.chunkCountValue = this.root.querySelector('[data-role="debug-chunks"]') as HTMLElement;
+    this.enemyCountValue = this.root.querySelector('[data-role="debug-enemies"]') as HTMLElement;
+    this.projectileCountValue = this.root.querySelector('[data-role="debug-projectiles"]') as HTMLElement;
 
     let selectedPlaneId = initialPlaneId;
 
@@ -157,6 +211,9 @@ export class UIController {
     renderSelection();
     this.launchButton.addEventListener("click", () => onLaunch(selectedPlaneId));
     this.restartButton.addEventListener("click", onRestart);
+    this.pauseButton.addEventListener("click", onPauseToggle);
+    this.startOverButton.addEventListener("click", onStartOver);
+    this.updatePauseState(false);
   }
 
   get canvas(): HTMLCanvasElement {
@@ -172,6 +229,8 @@ export class UIController {
     this.hud.classList.add("hidden");
     this.gameOver.classList.add("hidden");
     this.mobileControls.classList.add("hidden");
+    this.gameTools.classList.add("hidden");
+    this.updatePauseState(false);
     this.root.dataset.phase = "title";
   }
 
@@ -180,12 +239,15 @@ export class UIController {
     this.hud.classList.remove("hidden");
     this.gameOver.classList.add("hidden");
     this.mobileControls.classList.remove("hidden");
+    this.gameTools.classList.remove("hidden");
     this.root.dataset.phase = "playing";
   }
 
   showGameOver(score: number, wave: number): void {
     this.gameOver.classList.remove("hidden");
     this.mobileControls.classList.add("hidden");
+    this.gameTools.classList.add("hidden");
+    this.updatePauseState(false);
     this.root.dataset.phase = "game-over";
     this.gameOverSummary.textContent = `Final score ${score}. Survived threat level ${wave}.`;
   }
@@ -198,5 +260,22 @@ export class UIController {
     this.healthValue.textContent = `${state.health} / ${state.maxHealth}`;
     this.scoreValue.textContent = `${state.score}`;
     this.waveValue.textContent = `${state.wave}`;
+  }
+
+  updatePauseState(paused: boolean): void {
+    this.pauseButton.textContent = paused ? "Resume" : "Pause";
+    this.pauseBanner.classList.toggle("hidden", !paused);
+    this.root.dataset.paused = paused ? "true" : "false";
+  }
+
+  updateDebug(state: DebugState): void {
+    this.fpsValue.textContent = `${state.fps}`;
+    this.frameTimeValue.textContent = `${state.frameTimeMs.toFixed(1)} ms`;
+    this.memoryValue.textContent = state.memoryUsageMb === null ? "n/a" : `${state.memoryUsageMb.toFixed(1)} MB`;
+    this.drawCallsValue.textContent = `${state.drawCalls}`;
+    this.trianglesValue.textContent = `${state.triangles}`;
+    this.chunkCountValue.textContent = `${state.chunkCount}`;
+    this.enemyCountValue.textContent = `${state.enemyCount}`;
+    this.projectileCountValue.textContent = `${state.projectileCount}`;
   }
 }

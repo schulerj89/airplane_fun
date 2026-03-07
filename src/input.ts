@@ -41,6 +41,10 @@ export class InputController {
     window.removeEventListener("blur", this.clearAll);
   }
 
+  reset(): void {
+    this.clearAll();
+  }
+
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     const action = this.mapKey(event.code);
     if (action) {

@@ -6,7 +6,7 @@ import { createEnemyPlaneModel, createPlayerPlaneModel } from "./models";
 import { SoundController } from "./sound";
 import { UIController } from "./ui";
 
-type Phase = "title" | "playing" | "game-over";
+type Phase = "title" | "playing" | "paused" | "game-over";
 
 interface GameSnapshot {
   phase: Phase;
@@ -26,6 +26,12 @@ interface VoxelChunk {
   coordX: number;
   coordZ: number;
   group: THREE.Group;
+}
+
+interface PerformanceWithMemory extends Performance {
+  memory?: {
+    usedJSHeapSize: number;
+  };
 }
 
 declare global {
@@ -53,6 +59,11 @@ const RUNWAY_Z_END = 78;
 const PLAYER_MAX_ALTITUDE = 42;
 const PLAYER_MIN_ALTITUDE = RUNWAY_HEIGHT + PLAYER_GROUND_CLEARANCE;
 const TAKEOFF_SPEED = 18;
+const MAX_ACTIVE_ENEMIES = 3;
+const ENEMY_DESPAWN_DISTANCE = 90;
+const ENEMY_BEHIND_DESPAWN_DISTANCE = 28;
+const ENEMY_BEHIND_DESPAWN_RADIUS = 48;
+const PROJECTILE_DESPAWN_DISTANCE = 110;
 
 export class GameApp {
   private readonly ui: UIController;
@@ -80,6 +91,10 @@ export class GameApp {
   private animationFrame = 0;
   private hudStatus = "Idle";
   private isPlayerAirborne = false;
+  private frameAccumulator = 0;
+  private frameCounter = 0;
+  private fps = 0;
+  private frameTimeMs = 0;
 
   constructor(container: HTMLElement) {
     this.e2eMode = new URL(window.location.href).searchParams.get("e2e") === "1";
@@ -90,6 +105,10 @@ export class GameApp {
       (planeId) => {
         void this.startGame(planeId);
       },
+      () => {
+        void this.startGame(this.selectedPlaneId);
+      },
+      () => this.togglePause(),
       () => {
         void this.startGame(this.selectedPlaneId);
       }
@@ -121,7 +140,9 @@ export class GameApp {
 
     this.configureScene();
     window.addEventListener("resize", this.handleResize);
+    window.addEventListener("keydown", this.handleHotkeys);
     this.ui.showTitle();
+    this.ui.updateDebug(this.getDebugState());
     this.loop();
 
     window.__airplaneFun = {
@@ -175,6 +196,8 @@ export class GameApp {
     this.chunkPulse = 0;
     this.hudStatus = "Taxi";
     this.isPlayerAirborne = false;
+    this.input.reset();
+    this.ui.updatePauseState(false);
     this.clearEntities();
     this.clearChunks();
 
@@ -206,6 +229,14 @@ export class GameApp {
   private loop = (): void => {
     this.animationFrame = window.requestAnimationFrame(this.loop);
     const deltaSeconds = Math.min(this.clock.getDelta(), 0.033);
+    this.frameTimeMs = deltaSeconds * 1000;
+    this.frameAccumulator += deltaSeconds;
+    this.frameCounter += 1;
+    if (this.frameAccumulator >= 0.5) {
+      this.fps = Math.round(this.frameCounter / this.frameAccumulator);
+      this.frameAccumulator = 0;
+      this.frameCounter = 0;
+    }
 
     if (this.phase === "playing" && this.player) {
       this.updatePlayer(deltaSeconds);
@@ -222,6 +253,7 @@ export class GameApp {
     }
 
     this.renderer.render(this.scene, this.camera);
+    this.ui.updateDebug(this.getDebugState());
   };
 
   private updatePlayer(deltaSeconds: number): void {
@@ -432,8 +464,15 @@ export class GameApp {
       return;
     }
 
+    const availableSlots = Math.max(0, MAX_ACTIVE_ENEMIES - this.enemies.length);
+    if (availableSlots === 0) {
+      this.spawnTimer = 0.6;
+      return;
+    }
+
     const pressure = Math.min(1 + Math.floor(this.wave / 2), 4);
-    for (let index = 0; index < pressure; index += 1) {
+    const spawnCount = Math.min(pressure, availableSlots);
+    for (let index = 0; index < spawnCount; index += 1) {
       const distance = 28 + index * 6;
       const angle = this.hash(this.wave * 13 + index * 17) * Math.PI * 2;
       const altitude = 6 + this.hash(index * 37 + this.wave * 11) * 10;
@@ -451,7 +490,7 @@ export class GameApp {
   }
 
   private spawnEnemyAhead(distance: number, lateralOffset: number, altitudeOffset: number): void {
-    if (!this.player) {
+    if (!this.player || this.enemies.length >= MAX_ACTIVE_ENEMIES) {
       return;
     }
     const targetX = this.player.position.x + this.playerForward.x * distance + lateralOffset;
@@ -601,8 +640,39 @@ export class GameApp {
   }
 
   private cleanupEntities(): void {
+    this.despawnDistantEntities();
     this.removeDead(this.projectiles);
     this.removeDead(this.enemies);
+  }
+
+  private despawnDistantEntities(): void {
+    if (!this.player) {
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (!enemy.isAlive) {
+        continue;
+      }
+
+      const offset = enemy.position.clone().sub(this.player.position);
+      const distance = offset.length();
+      const forwardDistance = offset.dot(this.playerForward);
+      const isFarBehind = forwardDistance < -ENEMY_BEHIND_DESPAWN_DISTANCE && distance > ENEMY_BEHIND_DESPAWN_RADIUS;
+      if (distance > ENEMY_DESPAWN_DISTANCE || isFarBehind) {
+        enemy.isAlive = false;
+      }
+    }
+
+    for (const projectile of this.projectiles) {
+      if (!projectile.isAlive) {
+        continue;
+      }
+
+      if (projectile.position.distanceToSquared(this.player.position) > PROJECTILE_DESPAWN_DISTANCE ** 2) {
+        projectile.isAlive = false;
+      }
+    }
   }
 
   private removeDead<T extends Projectile | EnemyPlane>(entities: T[]): void {
@@ -632,7 +702,24 @@ export class GameApp {
 
   private handleGameOver(): void {
     this.phase = "game-over";
+    this.input.reset();
+    this.ui.updatePauseState(false);
     this.ui.showGameOver(this.score, Math.max(1, this.wave - 1));
+  }
+
+  private togglePause(): void {
+    if (this.phase === "playing") {
+      this.phase = "paused";
+      this.input.reset();
+      this.ui.updatePauseState(true);
+      return;
+    }
+
+    if (this.phase === "paused") {
+      this.phase = "playing";
+      this.clock.getDelta();
+      this.ui.updatePauseState(false);
+    }
   }
 
   private clearEntities(): void {
@@ -695,11 +782,28 @@ export class GameApp {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
+  private handleHotkeys = (event: KeyboardEvent): void => {
+    if (event.repeat) {
+      return;
+    }
+
+    if ((event.code === "KeyP" || event.code === "Escape") && (this.phase === "playing" || this.phase === "paused")) {
+      event.preventDefault();
+      this.togglePause();
+      return;
+    }
+
+    if (event.code === "KeyR" && (this.phase === "playing" || this.phase === "paused")) {
+      event.preventDefault();
+      void this.startGame(this.selectedPlaneId);
+    }
+  };
+
   private getSnapshot(): GameSnapshot {
     return {
       phase: this.phase,
       score: this.score,
-      wave: this.phase === "playing" ? Math.max(1, this.wave - 1) : this.wave,
+      wave: this.phase === "playing" || this.phase === "paused" ? Math.max(1, this.wave - 1) : this.wave,
       health: this.player?.health ?? 0,
       selectedPlaneId: this.selectedPlaneId,
       chunkCount: this.chunks.size,
@@ -710,9 +814,35 @@ export class GameApp {
     };
   }
 
+  private getDebugState(): {
+    fps: number;
+    frameTimeMs: number;
+    memoryUsageMb: number | null;
+    drawCalls: number;
+    triangles: number;
+    chunkCount: number;
+    enemyCount: number;
+    projectileCount: number;
+  } {
+    const performanceWithMemory = window.performance as PerformanceWithMemory;
+    return {
+      fps: this.fps,
+      frameTimeMs: this.frameTimeMs,
+      memoryUsageMb: performanceWithMemory.memory
+        ? performanceWithMemory.memory.usedJSHeapSize / (1024 * 1024)
+        : null,
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      chunkCount: this.chunks.size,
+      enemyCount: this.enemies.length,
+      projectileCount: this.projectiles.length
+    };
+  }
+
   dispose(): void {
     window.cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("keydown", this.handleHotkeys);
     this.input.dispose();
     this.clearEntities();
     this.clearChunks();

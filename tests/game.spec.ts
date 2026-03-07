@@ -22,7 +22,11 @@ test("player can accelerate down the runway, take off, and score points", async 
   await page.getByRole("button", { name: /Wraith/i }).click();
   await page.getByRole("button", { name: "Launch Mission" }).click();
   await expect(page.locator('[data-state="hud"]')).toBeVisible();
+  await expect(page.getByLabel("Debug panel")).toBeVisible();
   await expect(page.locator('[data-role="status"]')).toHaveText("Taxi");
+  await expect
+    .poll(async () => page.locator('[data-role="debug-fps"]').textContent())
+    .not.toBe("0");
 
   await expect
     .poll(async () => {
@@ -50,9 +54,9 @@ test("player can accelerate down the runway, take off, and score points", async 
 
   await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead());
 
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 18; index += 1) {
     await page.keyboard.press("Space");
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(150);
   }
 
   await setControl(page, "KeyW", "keyup");
@@ -60,8 +64,46 @@ test("player can accelerate down the runway, take off, and score points", async 
   await expect
     .poll(async () => {
       return page.evaluate(() => window.__airplaneFun?.getSnapshot().score ?? 0);
-    })
+    }, { timeout: 15000 })
     .toBeGreaterThan(0);
+});
+
+test("pause freezes play and start over resets the run", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  await setControl(page, "KeyW", "keydown");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().speed ?? 0);
+    })
+    .toBeGreaterThanOrEqual(8);
+
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(page.getByText("Paused")).toBeVisible();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().phase ?? "missing");
+    })
+    .toBe("paused");
+
+  const pausedSpeed = await page.evaluate(() => window.__airplaneFun?.getSnapshot().speed ?? 0);
+  await page.waitForTimeout(250);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().speed ?? 0);
+    })
+    .toBe(pausedSpeed);
+
+  await page.getByRole("button", { name: "Start Over" }).click();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(page.locator('[data-role="status"]')).toHaveText("Taxi");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().speed ?? -1);
+    })
+    .toBe(0);
+  await setControl(page, "KeyW", "keyup");
 });
 
 test("game over flow allows restart on the runway", async ({ page }) => {
