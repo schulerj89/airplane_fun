@@ -1,0 +1,239 @@
+:root {
+  color: #f6f7fb;
+  background:
+    radial-gradient(circle at top, rgba(124, 195, 255, 0.28), transparent 30%),
+    linear-gradient(180deg, #93d4ff 0%, #5ca6d8 28%, #224d77 68%, #102234 100%);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.game-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(255, 255, 255, 0.35), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 40%);
+}
+
+.viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.scene-wrap,
+.game-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.title-screen,
+.game-over {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.title-card {
+  width: min(58rem, 100%);
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 1.5rem;
+  background: rgba(9, 20, 31, 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 2rem 5rem rgba(5, 12, 24, 0.34);
+}
+
+.title-card.compact {
+  width: min(28rem, 100%);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #ffde74;
+  font-size: 0.75rem;
+}
+
+h1,
+h2,
+.subtitle,
+.summary {
+  margin-top: 0.75rem;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: clamp(2.5rem, 7vw, 5rem);
+}
+
+.subtitle,
+.summary,
+.plane-description p {
+  color: #d7e4f4;
+}
+
+.plane-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.plane-option {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f6f7fb;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plane-option.active {
+  border-color: #ffde74;
+  background: rgba(255, 222, 116, 0.18);
+  transform: translateY(-2px);
+}
+
+.plane-option span {
+  color: #b6c7d9;
+  font-size: 0.92rem;
+}
+
+.plane-description {
+  min-height: 6rem;
+}
+
+.primary-button,
+.secondary-button,
+.mobile-controls button {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.primary-button,
+.secondary-button {
+  padding: 0.9rem 1.3rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ffde74, #ff9e44);
+  color: #142331;
+}
+
+.secondary-button {
+  background: linear-gradient(135deg, #dceaff, #8bb8ff);
+}
+
+.hud {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.hud div {
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(10, 19, 33, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.hud span {
+  display: block;
+  color: #a5bad0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.hud strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.15rem;
+}
+
+.mobile-controls {
+  position: absolute;
+  inset: auto 1rem 1rem 1rem;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.dpad,
+.fire-button {
+  pointer-events: auto;
+}
+
+.dpad {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dpad-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.mobile-controls button {
+  min-width: 4.5rem;
+  padding: 1rem 1.2rem;
+  background: rgba(9, 20, 31, 0.72);
+  color: #f6f7fb;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.fire-button {
+  min-height: 4.5rem;
+  background: linear-gradient(135deg, #ff9d44, #ff5c5c) !important;
+}
+
+@media (max-width: 800px) {
+  .plane-grid,
+  .hud {
+    grid-template-columns: 1fr;
+  }
+
+  .title-card {
+    padding: 1.25rem;
+  }
+
+  .mobile-controls {
+    align-items: stretch;
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "airplane_fun",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:functional": "playwright test",
+    "test:functional:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^25.3.5",
+    "@types/three": "^0.183.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7"
+  }
+}
