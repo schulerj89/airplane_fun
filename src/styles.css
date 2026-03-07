@@ -187,7 +187,7 @@ h1 {
   left: 1rem;
   right: 1rem;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -222,9 +222,15 @@ h1 {
   pointer-events: none;
 }
 
+.control-stack,
 .dpad,
 .fire-button {
   pointer-events: auto;
+}
+
+.control-stack {
+  display: grid;
+  gap: 0.6rem;
 }
 
 .dpad {
@@ -233,6 +239,11 @@ h1 {
 }
 
 .dpad-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.throttle-row {
   display: flex;
   gap: 0.6rem;
 }
@@ -248,6 +259,15 @@ h1 {
 .fire-button {
   min-height: 4.5rem;
   background: linear-gradient(135deg, #ff9d44, #ff5c5c) !important;
+}
+
+.control-hint {
+  padding: 0.7rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(9, 20, 31, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #d7e4f4;
+  font-size: 0.8rem;
 }
 
 @media (max-width: 800px) {

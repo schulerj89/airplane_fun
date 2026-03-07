@@ -64,17 +64,19 @@ export class InputController {
 
   private mapKey(code: string): string | null {
     switch (code) {
-      case "ArrowLeft":
       case "KeyA":
+      case "ArrowLeft":
         return "left";
-      case "ArrowRight":
       case "KeyD":
+      case "ArrowRight":
         return "right";
-      case "ArrowUp":
       case "KeyW":
+        return "throttle-up";
+      case "KeyS":
+        return "throttle-down";
+      case "ArrowUp":
         return "up";
       case "ArrowDown":
-      case "KeyS":
         return "down";
       case "Space":
       case "KeyJ":

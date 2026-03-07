@@ -7,6 +7,8 @@ interface HudState {
   wave: number;
   planeName: string;
   status: string;
+  speed: number;
+  altitude: number;
 }
 
 export class UIController {
@@ -20,6 +22,8 @@ export class UIController {
   private readonly healthValue: HTMLElement;
   private readonly planeValue: HTMLElement;
   private readonly statusValue: HTMLElement;
+  private readonly speedValue: HTMLElement;
+  private readonly altitudeValue: HTMLElement;
   private readonly gameOver: HTMLElement;
   private readonly gameOverSummary: HTMLElement;
   private readonly launchButton: HTMLButtonElement;
@@ -45,7 +49,7 @@ export class UIController {
           <div class="title-card">
             <p class="eyebrow">Voxel air combat</p>
             <h1>Airplane Fun</h1>
-            <p class="subtitle">Choose a fighter, skim a streamed block world, and clear hostile drones as new terrain loads around you.</p>
+            <p class="subtitle">Launch from the runway, build speed, rotate into the climb, and clear hostile fighters across the streamed voxel sky.</p>
             <div class="plane-grid"></div>
             <div class="plane-description"></div>
             <button class="primary-button">Launch Mission</button>
@@ -54,6 +58,8 @@ export class UIController {
         <section class="hud hidden" data-state="hud">
           <div><span>Plane</span><strong data-role="plane"></strong></div>
           <div><span>Status</span><strong data-role="status"></strong></div>
+          <div><span>Speed</span><strong data-role="speed"></strong></div>
+          <div><span>Altitude</span><strong data-role="altitude"></strong></div>
           <div><span>Hull</span><strong data-role="health"></strong></div>
           <div><span>Score</span><strong data-role="score"></strong></div>
           <div><span>Threat</span><strong data-role="wave"></strong></div>
@@ -67,15 +73,24 @@ export class UIController {
           </div>
         </section>
         <section class="mobile-controls hidden" data-state="controls">
-          <div class="dpad">
-            <button data-action="up">Up</button>
-            <div class="dpad-row">
-              <button data-action="left">Left</button>
-              <button data-action="down">Down</button>
-              <button data-action="right">Right</button>
+          <div class="control-stack">
+            <div class="dpad">
+              <button data-action="up">Pitch Up</button>
+              <div class="dpad-row">
+                <button data-action="left">Yaw Left</button>
+                <button data-action="down">Pitch Down</button>
+                <button data-action="right">Yaw Right</button>
+              </div>
+            </div>
+            <div class="throttle-row">
+              <button data-action="throttle-up">Throttle +</button>
+              <button data-action="throttle-down">Throttle -</button>
             </div>
           </div>
-          <button class="fire-button" data-action="fire">Fire</button>
+          <div class="control-stack">
+            <div class="control-hint">W/S throttle, arrows pitch, A/D yaw</div>
+            <button class="fire-button" data-action="fire">Fire</button>
+          </div>
         </section>
       </div>
     `;
@@ -90,6 +105,8 @@ export class UIController {
     this.healthValue = this.root.querySelector('[data-role="health"]') as HTMLElement;
     this.planeValue = this.root.querySelector('[data-role="plane"]') as HTMLElement;
     this.statusValue = this.root.querySelector('[data-role="status"]') as HTMLElement;
+    this.speedValue = this.root.querySelector('[data-role="speed"]') as HTMLElement;
+    this.altitudeValue = this.root.querySelector('[data-role="altitude"]') as HTMLElement;
     this.gameOver = this.root.querySelector(".game-over") as HTMLElement;
     this.gameOverSummary = this.root.querySelector(".summary") as HTMLElement;
     this.launchButton = this.root.querySelector(".primary-button") as HTMLButtonElement;
@@ -176,6 +193,8 @@ export class UIController {
   updateHud(state: HudState): void {
     this.planeValue.textContent = state.planeName;
     this.statusValue.textContent = state.status;
+    this.speedValue.textContent = `${state.speed}`;
+    this.altitudeValue.textContent = `${state.altitude}`;
     this.healthValue.textContent = `${state.health} / ${state.maxHealth}`;
     this.scoreValue.textContent = `${state.score}`;
     this.waveValue.textContent = `${state.wave}`;

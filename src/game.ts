@@ -15,6 +15,10 @@ interface GameSnapshot {
   health: number;
   selectedPlaneId: PlaneId;
   chunkCount: number;
+  speed: number;
+  altitude: number;
+  airborne: boolean;
+  enemyCount: number;
 }
 
 interface VoxelChunk {
@@ -37,9 +41,18 @@ declare global {
 const CHUNK_SIZE = 12;
 const CHUNK_RENDER_RADIUS = 2;
 const WORLD_FLOOR = -8;
-const PLAYER_HOVER_HEIGHT = 6;
-const PLAYER_PROJECTILE_RANGE = 72;
-const ENEMY_PROJECTILE_RANGE = 52;
+const PLAYER_GROUND_CLEARANCE = 0.72;
+const ENEMY_GROUND_CLEARANCE = 0.7;
+const PLAYER_PROJECTILE_RANGE = 90;
+const ENEMY_PROJECTILE_RANGE = 64;
+const RUNWAY_HEIGHT = 1;
+const RUNWAY_HALF_WIDTH = 3;
+const RUNWAY_SHOULDER = 5;
+const RUNWAY_Z_START = -42;
+const RUNWAY_Z_END = 78;
+const PLAYER_MAX_ALTITUDE = 42;
+const PLAYER_MIN_ALTITUDE = RUNWAY_HEIGHT + PLAYER_GROUND_CLEARANCE;
+const TAKEOFF_SPEED = 18;
 
 export class GameApp {
   private readonly ui: UIController;
@@ -65,6 +78,8 @@ export class GameApp {
   private spawnTimer = 0;
   private chunkPulse = 0;
   private animationFrame = 0;
+  private hudStatus = "Idle";
+  private isPlayerAirborne = false;
 
   constructor(container: HTMLElement) {
     this.e2eMode = new URL(window.location.href).searchParams.get("e2e") === "1";
@@ -96,10 +111,10 @@ export class GameApp {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x86d6ff);
-    this.scene.fog = new THREE.Fog(0x86d6ff, 18, 92);
+    this.scene.fog = new THREE.Fog(0x86d6ff, 18, 120);
 
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 220);
-    this.camera.position.set(0, 10, -16);
+    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 240);
+    this.camera.position.set(0, 8, -22);
 
     this.scene.add(this.worldRoot);
     this.scene.add(this.entityRoot);
@@ -116,7 +131,7 @@ export class GameApp {
           this.player.damage(this.player.health);
         }
       },
-      spawnEnemyAhead: () => this.spawnEnemyAhead(18, 1)
+      spawnEnemyAhead: () => this.spawnEnemyAhead(this.e2eMode ? 18 : 34, 0, this.e2eMode ? 0 : 4)
     };
   }
 
@@ -133,7 +148,7 @@ export class GameApp {
     this.scene.add(sun);
 
     const skyBox = new THREE.Mesh(
-      new THREE.BoxGeometry(220, 140, 220),
+      new THREE.BoxGeometry(240, 150, 240),
       new THREE.MeshBasicMaterial({ color: 0x86d6ff, side: THREE.BackSide })
     );
     this.worldRoot.add(skyBox);
@@ -156,9 +171,10 @@ export class GameApp {
     this.phase = "playing";
     this.score = 0;
     this.wave = 1;
-    this.spawnTimer = this.e2eMode ? 0.2 : 1.8;
+    this.spawnTimer = this.e2eMode ? 99 : 2.6;
     this.chunkPulse = 0;
-    this.playerForward.set(0, 0, 1);
+    this.hudStatus = "Taxi";
+    this.isPlayerAirborne = false;
     this.clearEntities();
     this.clearChunks();
 
@@ -168,18 +184,23 @@ export class GameApp {
     }
 
     this.player = new PlayerPlane(definition, createPlayerPlaneModel(definition.color, definition.accent));
-    this.player.position.set(0, 10, 0);
+    this.player.position.set(0, RUNWAY_HEIGHT + PLAYER_GROUND_CLEARANCE, RUNWAY_Z_START + 8);
+    this.player.flight.heading = 0;
+    this.player.flight.pitch = 0;
+    this.player.flight.roll = 0;
+    this.player.flight.speed = 0;
+    this.player.group.rotation.order = "YXZ";
+    this.player.group.rotation.set(0, 0, 0);
     this.entityRoot.add(this.player.group);
 
     this.ensureWorldAroundPlayer();
-    this.snapPlayerToHoverHeight();
 
     if (this.e2eMode) {
-      this.spawnEnemyAhead(16, 0);
+      this.spawnEnemyAhead(18, 0, 0);
     }
 
     this.ui.showGameplay();
-    this.updateHud("Exploring");
+    this.updateHud();
   }
 
   private loop = (): void => {
@@ -194,7 +215,7 @@ export class GameApp {
       this.updateProjectiles(deltaSeconds);
       this.cleanupEntities();
       this.updateCamera(deltaSeconds);
-      this.updateHud("Exploring");
+      this.updateHud();
       if (!this.player.isAlive) {
         this.handleGameOver();
       }
@@ -208,21 +229,72 @@ export class GameApp {
       return;
     }
 
-    const xAxis = Number(this.input.isPressed("right")) - Number(this.input.isPressed("left"));
-    const zAxis = Number(this.input.isPressed("up")) - Number(this.input.isPressed("down"));
-    const move = new THREE.Vector3(xAxis, 0, zAxis);
-    if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(this.player.definition.speed * deltaSeconds);
-      this.player.position.add(move);
-      this.playerForward.lerp(move.clone().normalize(), 0.18);
-      this.playerForward.normalize();
+    const yawInput = Number(this.input.isPressed("right")) - Number(this.input.isPressed("left"));
+    const pitchInput = Number(this.input.isPressed("up")) - Number(this.input.isPressed("down"));
+    const throttleInput = Number(this.input.isPressed("throttle-up")) - Number(this.input.isPressed("throttle-down"));
+    const terrainHeight = this.getTerrainHeightAt(this.player.position.x, this.player.position.z) + PLAYER_GROUND_CLEARANCE;
+    const onGround = this.player.position.y <= terrainHeight + 0.05;
+    const speedRatio = THREE.MathUtils.clamp(this.player.flight.speed / Math.max(1, this.player.definition.speed + 14), 0, 1);
+
+    const acceleration = throttleInput > 0 ? 22 : throttleInput < 0 ? -26 : 0;
+    const passiveDrag = onGround ? 4.2 : 1.6;
+    const maxSpeed = this.player.definition.speed + 18;
+    this.player.flight.speed = THREE.MathUtils.clamp(
+      this.player.flight.speed + acceleration * deltaSeconds - passiveDrag * deltaSeconds,
+      0,
+      maxSpeed
+    );
+
+    const yawRate = onGround ? 0.8 : 1.5;
+    this.player.flight.heading += yawInput * yawRate * (0.3 + speedRatio * 0.7) * deltaSeconds;
+
+    const pitchRate = onGround ? 0.95 : 1.4;
+    this.player.flight.pitch = THREE.MathUtils.clamp(
+      this.player.flight.pitch + pitchInput * pitchRate * deltaSeconds,
+      -0.28,
+      0.52
+    );
+    this.player.flight.pitch = THREE.MathUtils.damp(this.player.flight.pitch, onGround ? 0.06 : 0, 4, deltaSeconds);
+
+    const forward = this.getForwardVector(this.player.flight.heading, this.player.flight.pitch);
+    const candidatePosition = this.player.position.clone().addScaledVector(forward, this.player.flight.speed * deltaSeconds);
+    if (!onGround) {
+      const sinkRate = Math.max(0, 4.6 - this.player.flight.speed * 0.16 - Math.max(0, this.player.flight.pitch) * 7.5);
+      candidatePosition.y -= sinkRate * deltaSeconds;
     }
 
-    const targetY = this.getTerrainHeightAt(this.player.position.x, this.player.position.z) + PLAYER_HOVER_HEIGHT;
-    this.player.position.y = THREE.MathUtils.lerp(this.player.position.y, targetY, 0.1);
-    this.player.group.rotation.y = Math.atan2(this.playerForward.x, this.playerForward.z);
-    this.player.group.rotation.z = -xAxis * 0.28;
-    this.player.group.rotation.x = zAxis * 0.12;
+    const candidateGround = this.getTerrainHeightAt(candidatePosition.x, candidatePosition.z) + PLAYER_GROUND_CLEARANCE;
+    const canLiftOff = this.player.flight.speed >= TAKEOFF_SPEED && this.player.flight.pitch > 0.08;
+    if (candidatePosition.y <= candidateGround || (onGround && !canLiftOff)) {
+      candidatePosition.y = candidateGround;
+      this.isPlayerAirborne = false;
+      if (this.player.flight.speed < TAKEOFF_SPEED) {
+        this.player.flight.pitch = Math.min(this.player.flight.pitch, 0.16);
+      }
+    } else {
+      candidatePosition.y = THREE.MathUtils.clamp(candidatePosition.y, PLAYER_MIN_ALTITUDE, PLAYER_MAX_ALTITUDE);
+      this.isPlayerAirborne = true;
+    }
+
+    this.player.position.copy(candidatePosition);
+    this.playerForward.copy(this.getForwardVector(this.player.flight.heading, this.player.flight.pitch));
+    this.player.flight.roll = THREE.MathUtils.damp(
+      this.player.flight.roll,
+      -yawInput * 0.38 - pitchInput * 0.08,
+      5,
+      deltaSeconds
+    );
+    this.player.group.rotation.set(-this.player.flight.pitch, this.player.flight.heading, this.player.flight.roll);
+
+    this.hudStatus = this.isPlayerAirborne
+      ? this.player.flight.pitch > 0.12
+        ? "Climbing"
+        : this.player.flight.pitch < -0.08
+          ? "Diving"
+          : "Airborne"
+      : this.player.flight.speed > 3
+        ? "Takeoff Roll"
+        : "Taxi";
 
     this.player.updateFireTimer(deltaSeconds);
     if (this.input.isPressed("fire") && this.player.canFire()) {
@@ -266,19 +338,37 @@ export class GameApp {
     const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x79828d, flatShading: true });
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x6d4624, flatShading: true });
     const leafMaterial = new THREE.MeshStandardMaterial({ color: 0x2f7b39, flatShading: true });
+    const runwayMaterial = new THREE.MeshStandardMaterial({ color: 0x39424a, flatShading: true });
+    const runwayStripeMaterial = new THREE.MeshStandardMaterial({ color: 0xf6f2d3, emissive: 0xf6f2d3, emissiveIntensity: 0.08 });
 
     for (let localX = 0; localX < CHUNK_SIZE; localX += 1) {
       for (let localZ = 0; localZ < CHUNK_SIZE; localZ += 1) {
         const worldX = chunkX * CHUNK_SIZE + localX;
         const worldZ = chunkZ * CHUNK_SIZE + localZ;
+        const onRunway = this.isRunway(worldX + 0.5, worldZ + 0.5);
         const top = this.getTerrainHeightAt(worldX, worldZ);
         const depth = top - WORLD_FLOOR;
-        const columnMaterial = top <= -2 ? stoneMaterial : dirtMaterial;
+        const columnMaterial = onRunway ? runwayMaterial : top <= -2 ? stoneMaterial : dirtMaterial;
         const column = new THREE.Mesh(new THREE.BoxGeometry(1, depth, 1), columnMaterial);
         column.position.set(worldX + 0.5, WORLD_FLOOR + depth * 0.5, worldZ + 0.5);
         column.castShadow = true;
         column.receiveShadow = true;
         group.add(column);
+
+        if (onRunway) {
+          const lane = new THREE.Mesh(new THREE.BoxGeometry(1, 0.12, 1), runwayMaterial);
+          lane.position.set(worldX + 0.5, top + 0.06, worldZ + 0.5);
+          lane.receiveShadow = true;
+          group.add(lane);
+
+          const stripeSeed = Math.round(worldZ) % 6 === 0 && Math.abs(worldX) < 1;
+          if (stripeSeed) {
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.82), runwayStripeMaterial);
+            stripe.position.set(worldX + 0.5, top + 0.16, worldZ + 0.5);
+            group.add(stripe);
+          }
+          continue;
+        }
 
         const grass = new THREE.Mesh(new THREE.BoxGeometry(1, 0.9, 1), grassMaterial);
         grass.position.set(worldX + 0.5, top + 0.45, worldZ + 0.5);
@@ -287,7 +377,7 @@ export class GameApp {
         group.add(grass);
 
         const treeSeed = this.hash(worldX * 19 + worldZ * 31);
-        if (treeSeed > 0.82 && top > -1 && top < 6) {
+        if (!this.isRunwayShoulder(worldX + 0.5, worldZ + 0.5) && treeSeed > 0.82 && top > -1 && top < 6) {
           const trunkHeight = 2 + Math.floor(this.hash(worldX * 11 - worldZ * 7) * 2);
           const trunk = new THREE.Mesh(new THREE.BoxGeometry(1, trunkHeight, 1), trunkMaterial);
           trunk.position.set(worldX + 0.5, top + trunkHeight * 0.5 + 0.4, worldZ + 0.5);
@@ -333,7 +423,7 @@ export class GameApp {
   }
 
   private updateCombat(deltaSeconds: number): void {
-    if (!this.player) {
+    if (!this.player || this.e2eMode) {
       return;
     }
 
@@ -344,32 +434,49 @@ export class GameApp {
 
     const pressure = Math.min(1 + Math.floor(this.wave / 2), 4);
     for (let index = 0; index < pressure; index += 1) {
-      const distance = 20 + index * 4;
+      const distance = 28 + index * 6;
       const angle = this.hash(this.wave * 13 + index * 17) * Math.PI * 2;
+      const altitude = 6 + this.hash(index * 37 + this.wave * 11) * 10;
       this.spawnEnemyAt(
         this.player.position.x + Math.cos(angle) * distance,
         this.player.position.z + Math.sin(angle) * distance,
-        6.5 + this.wave * 0.35,
-        24 + this.wave * 7,
-        50 + this.wave * 12
+        altitude,
+        8 + this.wave * 0.4,
+        24 + this.wave * 8,
+        60 + this.wave * 14
       );
     }
     this.wave += 1;
-    this.spawnTimer = this.e2eMode ? 2.2 : Math.max(2.8 - this.wave * 0.08, 1.2);
+    this.spawnTimer = Math.max(3 - this.wave * 0.08, 1.4);
   }
 
-  private spawnEnemyAhead(distance: number, lateralOffset: number): void {
+  private spawnEnemyAhead(distance: number, lateralOffset: number, altitudeOffset: number): void {
     if (!this.player) {
       return;
     }
     const targetX = this.player.position.x + this.playerForward.x * distance + lateralOffset;
     const targetZ = this.player.position.z + this.playerForward.z * distance;
-    this.spawnEnemyAt(targetX, targetZ, 5.5, 20, 100);
+    const targetGround = this.getTerrainHeightAt(targetX, targetZ);
+    const laneAltitude = Math.max(altitudeOffset, this.player.position.y - targetGround);
+    this.spawnEnemyAt(targetX, targetZ, laneAltitude, this.e2eMode ? 3 : 8, this.e2eMode ? 8 : 24, 100);
   }
 
-  private spawnEnemyAt(x: number, z: number, speed: number, health: number, scoreValue: number): void {
+  private spawnEnemyAt(
+    x: number,
+    z: number,
+    altitudeOffset: number,
+    speed: number,
+    health: number,
+    scoreValue: number
+  ): void {
     const enemy = new EnemyPlane(createEnemyPlaneModel(), speed, health, scoreValue);
-    enemy.position.set(x, this.getTerrainHeightAt(x, z) + 4.5, z);
+    const ground = this.getTerrainHeightAt(x, z);
+    enemy.position.set(x, ground + altitudeOffset, z);
+    enemy.flight.heading = Math.atan2(this.player?.position.x ?? 0 - x, this.player?.position.z ?? 0 - z);
+    enemy.flight.pitch = 0;
+    enemy.flight.roll = 0;
+    enemy.flight.speed = speed;
+    enemy.group.rotation.order = "YXZ";
     this.enemies.push(enemy);
     this.entityRoot.add(enemy.group);
   }
@@ -379,25 +486,40 @@ export class GameApp {
       return;
     }
 
-    for (const enemy of this.enemies) {
-      const toPlayer = this.player.position.clone().sub(enemy.position);
-      const distance = toPlayer.length();
-      const direction = toPlayer.normalize();
-      const lateral = new THREE.Vector3(-direction.z, 0, direction.x).multiplyScalar(Math.sin(enemy.position.z * 0.2) * 1.3);
-      enemy.velocity.copy(direction.multiplyScalar(enemy.speed)).add(lateral);
-      enemy.update(deltaSeconds);
+    for (let index = 0; index < this.enemies.length; index += 1) {
+      const enemy = this.enemies[index];
+      const orbitOffset = (index % 2 === 0 ? 1 : -1) * (5 + (index % 3) * 2);
+      const target = this.player.position
+        .clone()
+        .add(this.playerForward.clone().multiplyScalar(-6))
+        .add(new THREE.Vector3(orbitOffset, this.isPlayerAirborne ? 2 : 6, 0));
+      const toTarget = target.sub(enemy.position);
+      const distance = toTarget.length();
+      const horizontalDistance = Math.max(0.01, Math.hypot(toTarget.x, toTarget.z));
+      const desiredHeading = Math.atan2(toTarget.x, toTarget.z);
+      const desiredPitch = THREE.MathUtils.clamp(Math.atan2(toTarget.y, horizontalDistance), -0.4, 0.35);
+      enemy.flight.heading += this.angleDelta(enemy.flight.heading, desiredHeading) * Math.min(1, 1.6 * deltaSeconds);
+      enemy.flight.pitch += (desiredPitch - enemy.flight.pitch) * Math.min(1, 1.9 * deltaSeconds);
+      enemy.flight.speed = THREE.MathUtils.damp(enemy.flight.speed, enemy.speed + Math.min(5, distance * 0.05), 3, deltaSeconds);
 
-      const hoverY = this.getTerrainHeightAt(enemy.position.x, enemy.position.z) + 4.3;
-      enemy.position.y = THREE.MathUtils.lerp(enemy.position.y, hoverY, 0.12);
-      enemy.group.rotation.y = Math.atan2(enemy.velocity.x, enemy.velocity.z);
-      enemy.group.rotation.z = Math.sin(performance.now() * 0.004 + enemy.position.x) * 0.12;
-      enemy.group.rotation.x = 0.1;
+      const forward = this.getForwardVector(enemy.flight.heading, enemy.flight.pitch);
+      enemy.position.addScaledVector(forward, enemy.flight.speed * deltaSeconds);
+      const ground = this.getTerrainHeightAt(enemy.position.x, enemy.position.z) + ENEMY_GROUND_CLEARANCE;
+      if (enemy.position.y < ground) {
+        enemy.position.y = ground;
+      }
+      enemy.position.y = Math.min(enemy.position.y, PLAYER_MAX_ALTITUDE - 2);
+      enemy.flight.roll = THREE.MathUtils.damp(enemy.flight.roll, -this.angleDelta(enemy.flight.heading, desiredHeading) * 0.8, 4, deltaSeconds);
+      enemy.group.rotation.set(-enemy.flight.pitch, enemy.flight.heading, enemy.flight.roll);
 
-      if (enemy.canFire() && distance < 22) {
-        const projectile = new Projectile(0xff7057, "enemy", 9 + this.wave);
-        const shotDirection = this.player.position.clone().sub(enemy.position).normalize();
-        projectile.position.copy(enemy.position).add(shotDirection.clone().multiplyScalar(1.8));
-        projectile.velocity.copy(shotDirection.multiplyScalar(15));
+      const aimDirection = this.player.position.clone().sub(enemy.position).normalize();
+      const alignment = aimDirection.dot(forward);
+      if (enemy.canFire() && distance < 34 && alignment > 0.84) {
+        const projectile = new Projectile(0xff7057, "enemy", 8 + this.wave);
+        projectile.position.copy(enemy.position).add(forward.clone().multiplyScalar(1.6));
+        projectile.spawnPosition.copy(projectile.position);
+        projectile.velocity.copy(aimDirection.multiplyScalar(18));
+        projectile.group.lookAt(projectile.position.clone().add(projectile.velocity));
         this.projectiles.push(projectile);
         this.entityRoot.add(projectile.group);
         enemy.resetFireCooldown();
@@ -408,6 +530,8 @@ export class GameApp {
         this.player.damage(16);
         this.sound.playExplosion();
       }
+
+      enemy.update(deltaSeconds);
     }
   }
 
@@ -423,7 +547,7 @@ export class GameApp {
       }
 
       const maxRange = projectile.owner === "player" ? PLAYER_PROJECTILE_RANGE : ENEMY_PROJECTILE_RANGE;
-      if (projectile.position.distanceTo(this.player.position) > maxRange) {
+      if (projectile.position.distanceTo(projectile.spawnPosition) > maxRange) {
         projectile.isAlive = false;
         continue;
       }
@@ -454,8 +578,10 @@ export class GameApp {
       return;
     }
     const projectile = new Projectile(this.player.definition.accent, "player", this.player.definition.damage);
-    projectile.position.copy(this.player.position).add(this.playerForward.clone().multiplyScalar(2.2));
-    projectile.velocity.copy(this.playerForward).multiplyScalar(28);
+    projectile.position.copy(this.player.position).add(this.playerForward.clone().multiplyScalar(2.4));
+    projectile.spawnPosition.copy(projectile.position);
+    projectile.velocity.copy(this.playerForward).multiplyScalar(32);
+    projectile.group.lookAt(projectile.position.clone().add(projectile.velocity));
     this.projectiles.push(projectile);
     this.entityRoot.add(projectile.group);
     this.sound.playLaser();
@@ -467,10 +593,10 @@ export class GameApp {
     }
     this.cameraTarget
       .copy(this.player.position)
-      .add(this.playerForward.clone().multiplyScalar(-13))
-      .add(new THREE.Vector3(0, 6.5, 0));
-    this.camera.position.lerp(this.cameraTarget, 1 - Math.pow(0.002, deltaSeconds));
-    const lookTarget = this.player.position.clone().add(this.playerForward.clone().multiplyScalar(8)).add(new THREE.Vector3(0, 1.2, 0));
+      .add(this.playerForward.clone().multiplyScalar(-18))
+      .add(new THREE.Vector3(0, this.isPlayerAirborne ? 7.5 : 5.5, 0));
+    this.camera.position.lerp(this.cameraTarget, 1 - Math.pow(0.003, deltaSeconds));
+    const lookTarget = this.player.position.clone().add(this.playerForward.clone().multiplyScalar(14)).add(new THREE.Vector3(0, 1.2, 0));
     this.camera.lookAt(lookTarget);
   }
 
@@ -488,7 +614,7 @@ export class GameApp {
     }
   }
 
-  private updateHud(status: string): void {
+  private updateHud(): void {
     if (!this.player) {
       return;
     }
@@ -496,9 +622,11 @@ export class GameApp {
       health: this.player.health,
       maxHealth: this.player.definition.maxHealth,
       score: this.score,
-      wave: Math.max(1, this.wave - 1),
+      wave: Math.max(1, this.wave - (this.e2eMode ? 0 : 1)),
       planeName: this.player.definition.name,
-      status
+      status: this.hudStatus,
+      speed: Math.round(this.player.flight.speed),
+      altitude: Math.max(0, Math.round(this.player.position.y - this.getTerrainHeightAt(this.player.position.x, this.player.position.z))),
     });
   }
 
@@ -529,18 +657,31 @@ export class GameApp {
     this.chunks.clear();
   }
 
-  private snapPlayerToHoverHeight(): void {
-    if (!this.player) {
-      return;
-    }
-    this.player.position.y = this.getTerrainHeightAt(this.player.position.x, this.player.position.z) + PLAYER_HOVER_HEIGHT;
-  }
-
   private getTerrainHeightAt(x: number, z: number): number {
+    if (this.isRunwayShoulder(x, z)) {
+      return RUNWAY_HEIGHT;
+    }
     const ridge = Math.sin(x * 0.18) * 1.7 + Math.cos(z * 0.14) * 1.5 + Math.sin((x + z) * 0.07) * 2.1;
     const dunes = Math.sin(z * 0.04) * 2.6 + Math.cos(x * 0.05) * 1.8;
     const noise = this.hash(Math.floor(x) * 9283 + Math.floor(z) * 6899) * 2.2;
     return Math.floor(ridge + dunes + noise);
+  }
+
+  private isRunway(x: number, z: number): boolean {
+    return Math.abs(x) <= RUNWAY_HALF_WIDTH && z >= RUNWAY_Z_START && z <= RUNWAY_Z_END;
+  }
+
+  private isRunwayShoulder(x: number, z: number): boolean {
+    return Math.abs(x) <= RUNWAY_SHOULDER && z >= RUNWAY_Z_START - 2 && z <= RUNWAY_Z_END + 2;
+  }
+
+  private getForwardVector(heading: number, pitch: number): THREE.Vector3 {
+    const cosPitch = Math.cos(pitch);
+    return new THREE.Vector3(Math.sin(heading) * cosPitch, Math.sin(pitch), Math.cos(heading) * cosPitch).normalize();
+  }
+
+  private angleDelta(current: number, target: number): number {
+    return Math.atan2(Math.sin(target - current), Math.cos(target - current));
   }
 
   private hash(seed: number): number {
@@ -561,7 +702,11 @@ export class GameApp {
       wave: this.phase === "playing" ? Math.max(1, this.wave - 1) : this.wave,
       health: this.player?.health ?? 0,
       selectedPlaneId: this.selectedPlaneId,
-      chunkCount: this.chunks.size
+      chunkCount: this.chunks.size,
+      speed: Math.round(this.player?.flight.speed ?? 0),
+      altitude: this.player ? Math.max(0, Math.round(this.player.position.y - this.getTerrainHeightAt(this.player.position.x, this.player.position.z))) : 0,
+      airborne: this.isPlayerAirborne,
+      enemyCount: this.enemies.length
     };
   }
 

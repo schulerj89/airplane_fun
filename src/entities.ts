@@ -50,9 +50,17 @@ export abstract class Entity {
   }
 }
 
+export interface FlightKinematics {
+  heading: number;
+  pitch: number;
+  roll: number;
+  speed: number;
+}
+
 export class Projectile extends Entity {
   public readonly damageAmount: number;
   public readonly owner: "player" | "enemy";
+  public readonly spawnPosition = new THREE.Vector3();
 
   constructor(color: number, owner: "player" | "enemy", damageAmount: number) {
     const group = new THREE.Group();
@@ -79,6 +87,12 @@ export class Projectile extends Entity {
 
 export class PlayerPlane extends Entity {
   public readonly definition: PlaneDefinition;
+  public readonly flight: FlightKinematics = {
+    heading: 0,
+    pitch: 0,
+    roll: 0,
+    speed: 0
+  };
   private fireTimer = 0;
 
   constructor(definition: PlaneDefinition, model: THREE.Group) {
@@ -108,6 +122,12 @@ export class EnemyPlane extends Entity {
   private fireTimer = 1;
   public readonly speed: number;
   public readonly scoreValue: number;
+  public readonly flight: FlightKinematics = {
+    heading: 0,
+    pitch: 0,
+    roll: 0,
+    speed: 0
+  };
 
   constructor(model: THREE.Group, speed: number, health: number, scoreValue: number) {
     super(model, [

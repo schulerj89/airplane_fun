@@ -4,12 +4,15 @@ Airplane Fun is a browser-based voxel-inspired airplane fighter game built with 
 
 ## Gameplay
 - Title screen with three playable aircraft: Falcon, Titan, and Wraith
+- Runway starts with manual throttle, pitch, yaw, and air combat
 - Keyboard and on-screen button controls
 - Enemy waves, score tracking, hull meter, and restart loop
 - Functional browser tests with Playwright
 
 ## Controls
-- Move: `WASD` or arrow keys
+- Throttle: `W` / `S`
+- Pitch: `Up` / `Down`
+- Yaw: `A` / `D` or `Left` / `Right`
 - Fire: `Space` or on-screen `Fire` button
 
 ## Scripts
