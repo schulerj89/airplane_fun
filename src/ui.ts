@@ -45,7 +45,7 @@ export class UIController {
           <div class="title-card">
             <p class="eyebrow">Voxel air combat</p>
             <h1>Airplane Fun</h1>
-            <p class="subtitle">Choose a fighter, roll down the runway, and survive escalating waves after takeoff.</p>
+            <p class="subtitle">Choose a fighter, skim a streamed block world, and clear hostile drones as new terrain loads around you.</p>
             <div class="plane-grid"></div>
             <div class="plane-description"></div>
             <button class="primary-button">Launch Mission</button>
@@ -56,11 +56,11 @@ export class UIController {
           <div><span>Status</span><strong data-role="status"></strong></div>
           <div><span>Hull</span><strong data-role="health"></strong></div>
           <div><span>Score</span><strong data-role="score"></strong></div>
-          <div><span>Wave</span><strong data-role="wave"></strong></div>
+          <div><span>Threat</span><strong data-role="wave"></strong></div>
         </section>
         <section class="game-over hidden" data-state="game-over">
           <div class="title-card compact">
-            <p class="eyebrow">Mission failed</p>
+            <p class="eyebrow">Hull lost</p>
             <h2>Rearm and relaunch</h2>
             <p class="summary"></p>
             <button class="secondary-button">Restart</button>
@@ -170,7 +170,7 @@ export class UIController {
     this.gameOver.classList.remove("hidden");
     this.mobileControls.classList.add("hidden");
     this.root.dataset.phase = "game-over";
-    this.gameOverSummary.textContent = `Final score ${score}. Reached wave ${wave}.`;
+    this.gameOverSummary.textContent = `Final score ${score}. Survived threat level ${wave}.`;
   }
 
   updateHud(state: HudState): void {

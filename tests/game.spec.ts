@@ -13,18 +13,19 @@ test("player can launch a mission and score points", async ({ page }) => {
   await page.getByRole("button", { name: /Wraith/i }).click();
   await page.getByRole("button", { name: "Launch Mission" }).click();
   await expect(page.locator('[data-state="hud"]')).toBeVisible();
-  await expect(page.locator('[data-role="status"]')).toHaveText("Takeoff");
+  await expect(page.locator('[data-role="status"]')).toHaveText("Exploring");
 
   await expect
     .poll(async () => {
-      return page.evaluate(() => window.__airplaneFun?.getSnapshot().flightState ?? "none");
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().chunkCount ?? 0);
     })
-    .toBe("combat");
+    .toBeGreaterThan(0);
 
-  const fireButton = page.locator('[data-action="fire"]');
+  await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead());
+
   for (let index = 0; index < 8; index += 1) {
-    await fireButton.click();
-    await page.waitForTimeout(120);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(140);
   }
 
   await expect
@@ -41,5 +42,5 @@ test("game over flow allows restart", async ({ page }) => {
   await expect(page.locator('[data-state="game-over"]')).toBeVisible();
   await page.getByRole("button", { name: "Restart" }).click();
   await expect(page.locator('[data-state="hud"]')).toBeVisible();
-  await expect(page.locator('[data-role="status"]')).toHaveText("Takeoff");
+  await expect(page.locator('[data-role="status"]')).toHaveText("Exploring");
 });

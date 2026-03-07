@@ -19,10 +19,10 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
   {
     id: "falcon",
     name: "Falcon",
-    tagline: "Fast interceptor with balanced firepower.",
+    tagline: "Fast scout built to sweep low across voxel canyons.",
     role: "Interceptor",
-    abilityName: "Afterburner Climb",
-    abilityDescription: "Fastest takeoff and strong all-round handling once airborne.",
+    abilityName: "Chunk Runner",
+    abilityDescription: "Fastest frame for covering terrain and hunting drones between ridgelines.",
     speed: 26,
     maxHealth: 90,
     fireCooldown: 0.2,
@@ -33,10 +33,10 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
   {
     id: "titan",
     name: "Titan",
-    tagline: "Heavy bruiser with high hull integrity.",
+    tagline: "Heavy hauler that shrugs off return fire over rough ground.",
     role: "Assault",
     abilityName: "Siege Frame",
-    abilityDescription: "Highest hull and heavy shots, trading speed for staying power.",
+    abilityDescription: "Highest hull and heavy shots, ideal for clearing clustered drones.",
     speed: 18,
     maxHealth: 140,
     fireCooldown: 0.34,
@@ -47,10 +47,10 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
   {
     id: "wraith",
     name: "Wraith",
-    tagline: "High-tempo skirmisher with relentless fire.",
+    tagline: "Agile skirmisher tuned for tight turns through block forests.",
     role: "Skirmisher",
     abilityName: "Rapid Burst",
-    abilityDescription: "Shortest cooldown, built to keep pressure on enemy formations.",
+    abilityDescription: "Shortest cooldown, built to keep pressure on roaming swarms.",
     speed: 22,
     maxHealth: 80,
     fireCooldown: 0.13,
@@ -62,5 +62,6 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
 
 export const WORLD_BOUNDS = {
   x: 30,
-  y: 16
+  y: 20,
+  z: 30
 };

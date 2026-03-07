@@ -1,18 +1,21 @@
 import * as THREE from "three";
-import { PlaneDefinition, WORLD_BOUNDS } from "./config";
+import { PlaneDefinition } from "./config";
+
+export interface Hitbox {
+  offset: THREE.Vector3;
+  size: THREE.Vector3;
+}
 
 export abstract class Entity {
   public readonly group: THREE.Group;
   public readonly velocity = new THREE.Vector3();
-  public readonly size: THREE.Vector3;
-  public readonly hitboxOffset: THREE.Vector3;
+  public readonly hitboxes: Hitbox[];
   public isAlive = true;
   public health = 1;
 
-  protected constructor(group: THREE.Group, size: THREE.Vector3, hitboxOffset = new THREE.Vector3()) {
+  protected constructor(group: THREE.Group, hitboxes: Hitbox[]) {
     this.group = group;
-    this.size = size;
-    this.hitboxOffset = hitboxOffset;
+    this.hitboxes = hitboxes;
   }
 
   get position(): THREE.Vector3 {
@@ -23,18 +26,21 @@ export abstract class Entity {
     this.position.addScaledVector(this.velocity, deltaSeconds);
   }
 
-  get hitboxCenter(): THREE.Vector3 {
-    return this.position.clone().add(this.hitboxOffset);
-  }
-
   intersects(other: Entity): boolean {
-    const center = this.hitboxCenter;
-    const otherCenter = other.hitboxCenter;
-    return (
-      Math.abs(center.x - otherCenter.x) < (this.size.x + other.size.x) * 0.5 &&
-      Math.abs(center.y - otherCenter.y) < (this.size.y + other.size.y) * 0.5 &&
-      Math.abs(center.z - otherCenter.z) < (this.size.z + other.size.z) * 0.5
-    );
+    for (const hitbox of this.hitboxes) {
+      const center = this.position.clone().add(hitbox.offset);
+      for (const otherHitbox of other.hitboxes) {
+        const otherCenter = other.position.clone().add(otherHitbox.offset);
+        const overlaps =
+          Math.abs(center.x - otherCenter.x) < (hitbox.size.x + otherHitbox.size.x) * 0.5 &&
+          Math.abs(center.y - otherCenter.y) < (hitbox.size.y + otherHitbox.size.y) * 0.5 &&
+          Math.abs(center.z - otherCenter.z) < (hitbox.size.z + otherHitbox.size.z) * 0.5;
+        if (overlaps) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   damage(amount: number): boolean {
@@ -57,7 +63,7 @@ export class Projectile extends Entity {
     });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 1.2), material);
     group.add(mesh);
-    super(group, new THREE.Vector3(0.22, 0.22, 1));
+    super(group, [{ offset: new THREE.Vector3(), size: new THREE.Vector3(0.22, 0.22, 1) }]);
     this.owner = owner;
     this.damageAmount = damageAmount;
     this.health = 1;
@@ -65,10 +71,7 @@ export class Projectile extends Entity {
 
   override update(deltaSeconds: number): void {
     super.update(deltaSeconds);
-    if (Math.abs(this.position.x) > WORLD_BOUNDS.x + 2 || Math.abs(this.position.y) > WORLD_BOUNDS.y + 2) {
-      this.isAlive = false;
-    }
-    if (this.position.z > 40 || this.position.z < -20) {
+    if (this.position.y < -16 || this.position.y > 40) {
       this.isAlive = false;
     }
   }
@@ -79,7 +82,11 @@ export class PlayerPlane extends Entity {
   private fireTimer = 0;
 
   constructor(definition: PlaneDefinition, model: THREE.Group) {
-    super(model, new THREE.Vector3(2.8, 1.5, 4.2), new THREE.Vector3(0, 0.1, 0.15));
+    super(model, [
+      { offset: new THREE.Vector3(0, 0.1, 0.15), size: new THREE.Vector3(1.1, 0.9, 3.8) },
+      { offset: new THREE.Vector3(0, -0.05, -0.3), size: new THREE.Vector3(3.4, 0.35, 1.2) },
+      { offset: new THREE.Vector3(0, 0.45, -1.2), size: new THREE.Vector3(0.5, 0.9, 0.7) }
+    ]);
     this.definition = definition;
     this.health = definition.maxHealth;
   }
@@ -103,7 +110,11 @@ export class EnemyPlane extends Entity {
   public readonly scoreValue: number;
 
   constructor(model: THREE.Group, speed: number, health: number, scoreValue: number) {
-    super(model, new THREE.Vector3(2.2, 1.1, 2.8), new THREE.Vector3(0, 0.05, 0.2));
+    super(model, [
+      { offset: new THREE.Vector3(0, 0.1, 0.25), size: new THREE.Vector3(1, 0.95, 1.8) },
+      { offset: new THREE.Vector3(0, 0, -0.25), size: new THREE.Vector3(2.8, 0.3, 1) },
+      { offset: new THREE.Vector3(0, 0.45, -1.05), size: new THREE.Vector3(0.38, 0.68, 0.38) }
+    ]);
     this.health = health;
     this.speed = speed;
     this.scoreValue = scoreValue;
@@ -119,9 +130,8 @@ export class EnemyPlane extends Entity {
 
   override update(deltaSeconds: number): void {
     this.fireTimer -= deltaSeconds;
-    this.position.z -= this.speed * deltaSeconds;
-    this.position.x += Math.sin(this.position.z * 0.2) * deltaSeconds * 1.5;
-    if (this.position.z < -6) {
+    this.position.addScaledVector(this.velocity, deltaSeconds);
+    if (this.position.y < -12 || this.position.y > 48) {
       this.isAlive = false;
     }
   }
