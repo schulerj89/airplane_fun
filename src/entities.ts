@@ -5,12 +5,14 @@ export abstract class Entity {
   public readonly group: THREE.Group;
   public readonly velocity = new THREE.Vector3();
   public readonly size: THREE.Vector3;
+  public readonly hitboxOffset: THREE.Vector3;
   public isAlive = true;
   public health = 1;
 
-  protected constructor(group: THREE.Group, size: THREE.Vector3) {
+  protected constructor(group: THREE.Group, size: THREE.Vector3, hitboxOffset = new THREE.Vector3()) {
     this.group = group;
     this.size = size;
+    this.hitboxOffset = hitboxOffset;
   }
 
   get position(): THREE.Vector3 {
@@ -21,11 +23,17 @@ export abstract class Entity {
     this.position.addScaledVector(this.velocity, deltaSeconds);
   }
 
+  get hitboxCenter(): THREE.Vector3 {
+    return this.position.clone().add(this.hitboxOffset);
+  }
+
   intersects(other: Entity): boolean {
+    const center = this.hitboxCenter;
+    const otherCenter = other.hitboxCenter;
     return (
-      Math.abs(this.position.x - other.position.x) < (this.size.x + other.size.x) * 0.5 &&
-      Math.abs(this.position.y - other.position.y) < (this.size.y + other.size.y) * 0.5 &&
-      Math.abs(this.position.z - other.position.z) < (this.size.z + other.size.z) * 0.5
+      Math.abs(center.x - otherCenter.x) < (this.size.x + other.size.x) * 0.5 &&
+      Math.abs(center.y - otherCenter.y) < (this.size.y + other.size.y) * 0.5 &&
+      Math.abs(center.z - otherCenter.z) < (this.size.z + other.size.z) * 0.5
     );
   }
 
@@ -49,7 +57,7 @@ export class Projectile extends Entity {
     });
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 1.2), material);
     group.add(mesh);
-    super(group, new THREE.Vector3(0.3, 0.3, 1.2));
+    super(group, new THREE.Vector3(0.22, 0.22, 1));
     this.owner = owner;
     this.damageAmount = damageAmount;
     this.health = 1;
@@ -71,7 +79,7 @@ export class PlayerPlane extends Entity {
   private fireTimer = 0;
 
   constructor(definition: PlaneDefinition, model: THREE.Group) {
-    super(model, new THREE.Vector3(3.6, 2.0, 4.8));
+    super(model, new THREE.Vector3(2.8, 1.5, 4.2), new THREE.Vector3(0, 0.1, 0.15));
     this.definition = definition;
     this.health = definition.maxHealth;
   }
@@ -95,7 +103,7 @@ export class EnemyPlane extends Entity {
   public readonly scoreValue: number;
 
   constructor(model: THREE.Group, speed: number, health: number, scoreValue: number) {
-    super(model, new THREE.Vector3(3.2, 1.8, 4.0));
+    super(model, new THREE.Vector3(2.2, 1.1, 2.8), new THREE.Vector3(0, 0.05, 0.2));
     this.health = health;
     this.speed = speed;
     this.scoreValue = scoreValue;

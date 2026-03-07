@@ -7,9 +7,11 @@ import { SoundController } from "./sound";
 import { UIController } from "./ui";
 
 type Phase = "title" | "playing" | "game-over";
+type FlightState = "takeoff" | "combat";
 
 interface GameSnapshot {
   phase: Phase;
+  flightState: FlightState | "none";
   score: number;
   wave: number;
   health: number;
@@ -35,12 +37,16 @@ export class GameApp {
   private readonly clock = new THREE.Clock();
   private readonly projectiles: Projectile[] = [];
   private readonly enemies: EnemyPlane[] = [];
+  private runwayGroup = new THREE.Group();
   private player: PlayerPlane | null = null;
   private phase: Phase = "title";
+  private flightState: FlightState = "takeoff";
   private selectedPlaneId: PlaneId = "falcon";
   private score = 0;
   private wave = 1;
   private spawnTimer = 0;
+  private takeoffTimer = 0;
+  private takeoffDuration = 3.5;
   private animationFrame = 0;
   private readonly e2eMode: boolean;
 
@@ -74,9 +80,9 @@ export class GameApp {
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x05131f, 0.028);
-    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
-    this.camera.position.set(0, 8, -14);
-    this.camera.lookAt(0, 2, 10);
+    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 160);
+    this.camera.position.set(0, 10, -18);
+    this.camera.lookAt(0, 1, 18);
 
     this.configureScene();
     window.addEventListener("resize", this.handleResize);
@@ -95,6 +101,7 @@ export class GameApp {
 
   private configureScene(): void {
     this.scene.clear();
+    this.runwayGroup = new THREE.Group();
 
     const hemi = new THREE.HemisphereLight(0xcde8ff, 0x132433, 1.8);
     this.scene.add(hemi);
@@ -105,7 +112,7 @@ export class GameApp {
     this.scene.add(sun);
 
     const sky = new THREE.Mesh(
-      new THREE.BoxGeometry(100, 50, 100),
+      new THREE.BoxGeometry(180, 70, 220),
       new THREE.MeshBasicMaterial({
         color: 0x6eb7ff,
         side: THREE.BackSide
@@ -114,32 +121,65 @@ export class GameApp {
     this.scene.add(sky);
 
     const clouds = new THREE.Group();
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < 28; index += 1) {
       const cloud = new THREE.Mesh(
         new THREE.BoxGeometry(3 + (index % 3), 1.2, 2.2),
         new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true })
       );
-      cloud.position.set(-18 + (index % 5) * 9, 8 + (index % 4), index * 6 - 10);
+      cloud.position.set(-36 + (index % 7) * 12, 8 + (index % 5), index * 8 - 30);
       clouds.add(cloud);
     }
     this.scene.add(clouds);
 
     const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(80, 1, 120),
+      new THREE.BoxGeometry(150, 1, 220),
       new THREE.MeshStandardMaterial({ color: 0x396b4d, flatShading: true })
     );
-    floor.position.set(0, -8, 30);
+    floor.position.set(0, -8, 45);
     floor.receiveShadow = true;
     this.scene.add(floor);
+
+    const runway = new THREE.Mesh(
+      new THREE.BoxGeometry(16, 0.4, 90),
+      new THREE.MeshStandardMaterial({ color: 0x34383d, flatShading: true })
+    );
+    runway.position.set(0, -7.45, -2);
+    runway.receiveShadow = true;
+    this.runwayGroup.add(runway);
+
+    const centerLineMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f0da, flatShading: true });
+    for (let index = 0; index < 11; index += 1) {
+      const marker = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 4.5), centerLineMaterial);
+      marker.position.set(0, -7.2, -36 + index * 8);
+      this.runwayGroup.add(marker);
+    }
+
+    const edgeLightMaterial = new THREE.MeshStandardMaterial({
+      color: 0x7fd1ff,
+      emissive: 0x7fd1ff,
+      emissiveIntensity: 0.35,
+      flatShading: true
+    });
+    for (let index = 0; index < 18; index += 1) {
+      for (const side of [-1, 1]) {
+        const light = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.25, 0.45), edgeLightMaterial);
+        light.position.set(side * 7.5, -7.15, -40 + index * 5);
+        this.runwayGroup.add(light);
+      }
+    }
+    this.scene.add(this.runwayGroup);
   }
 
   private async startGame(planeId: PlaneId): Promise<void> {
     this.selectedPlaneId = planeId;
     await this.sound.unlock();
     this.phase = "playing";
+    this.flightState = "takeoff";
     this.score = 0;
     this.wave = 1;
-    this.spawnTimer = 0;
+    this.spawnTimer = 0.9;
+    this.takeoffTimer = 0;
+    this.takeoffDuration = this.e2eMode ? 0.8 : 3.5;
     this.clearEntities();
 
     const definition = PLANE_DEFINITIONS.find((plane) => plane.id === planeId);
@@ -148,20 +188,18 @@ export class GameApp {
     }
 
     this.player = new PlayerPlane(definition, createPlayerPlaneModel(definition.color, definition.accent));
-    this.player.position.set(0, 0, 0);
+    this.player.position.set(0, -6.2, -24);
+    this.player.group.rotation.x = -0.02;
     this.scene.add(this.player.group);
     this.ui.showGameplay();
     this.ui.updateHud({
       health: this.player.health,
       maxHealth: definition.maxHealth,
       score: this.score,
-      wave: this.wave,
-      planeName: definition.name
+      wave: 0,
+      planeName: definition.name,
+      status: "Takeoff"
     });
-
-    if (this.e2eMode) {
-      this.spawnEnemy(0, 0, 12, 0, 9, 100);
-    }
   }
 
   private loop = (): void => {
@@ -170,6 +208,7 @@ export class GameApp {
 
     if (this.phase === "playing" && this.player) {
       this.updatePlayer(deltaSeconds);
+      this.updateFlightState(deltaSeconds);
       this.updateCombat(deltaSeconds);
       this.updateEnemies(deltaSeconds);
       this.updateProjectiles(deltaSeconds);
@@ -190,25 +229,66 @@ export class GameApp {
 
     const xAxis = Number(this.input.isPressed("right")) - Number(this.input.isPressed("left"));
     const yAxis = Number(this.input.isPressed("up")) - Number(this.input.isPressed("down"));
-    const moveVector = new THREE.Vector3(xAxis, yAxis, 0);
+    const maxVerticalInput = this.flightState === "takeoff" ? Math.max(0, yAxis) : yAxis;
+    const moveVector = new THREE.Vector3(xAxis, maxVerticalInput, 0);
     if (moveVector.lengthSq() > 0) {
-      moveVector.normalize().multiplyScalar(this.player.definition.speed * deltaSeconds);
+      const speedScalar = this.flightState === "takeoff" ? this.player.definition.speed * 0.55 : this.player.definition.speed;
+      moveVector.normalize().multiplyScalar(speedScalar * deltaSeconds);
       this.player.position.add(moveVector);
     }
 
     this.player.position.x = THREE.MathUtils.clamp(this.player.position.x, -WORLD_BOUNDS.x, WORLD_BOUNDS.x);
-    this.player.position.y = THREE.MathUtils.clamp(this.player.position.y, -WORLD_BOUNDS.y, WORLD_BOUNDS.y);
+    const minAltitude = this.flightState === "takeoff" ? -6.2 : -WORLD_BOUNDS.y;
+    this.player.position.y = THREE.MathUtils.clamp(this.player.position.y, minAltitude, WORLD_BOUNDS.y);
     this.player.group.rotation.z = -xAxis * 0.35;
-    this.player.group.rotation.x = yAxis * 0.15;
+    if (this.flightState === "combat") {
+      this.player.group.rotation.x = maxVerticalInput * 0.15;
+    }
 
     this.player.updateFireTimer(deltaSeconds);
-    if (this.input.isPressed("fire") && this.player.canFire()) {
+    if (this.flightState === "combat" && this.input.isPressed("fire") && this.player.canFire()) {
       this.firePlayerProjectile();
       this.player.resetFireCooldown();
     }
   }
 
+  private updateFlightState(deltaSeconds: number): void {
+    if (!this.player || this.flightState !== "takeoff") {
+      return;
+    }
+
+    this.takeoffTimer += deltaSeconds;
+    const progress = Math.min(this.takeoffTimer / this.takeoffDuration, 1);
+    const definition = this.player.definition;
+
+    this.player.position.z = THREE.MathUtils.lerp(-24, -4, progress);
+    this.player.position.y = THREE.MathUtils.lerp(-6.2, 0, progress);
+    this.player.group.rotation.x = THREE.MathUtils.lerp(-0.02, -0.28, progress);
+
+    if (progress >= 1) {
+      this.flightState = "combat";
+      this.player.position.z = 0;
+      this.player.group.rotation.x = 0;
+      this.spawnTimer = 0.3;
+      if (this.e2eMode) {
+        this.spawnEnemy(0, 0, 18, 0, 9, 100);
+      }
+      this.ui.updateHud({
+        health: this.player.health,
+        maxHealth: definition.maxHealth,
+        score: this.score,
+        wave: Math.max(1, this.wave),
+        planeName: definition.name,
+        status: "Airborne"
+      });
+    }
+  }
+
   private updateCombat(deltaSeconds: number): void {
+    if (this.flightState !== "combat") {
+      return;
+    }
+
     this.spawnTimer -= deltaSeconds;
     if (this.spawnTimer <= 0) {
       this.spawnWave();
@@ -219,9 +299,9 @@ export class GameApp {
   private spawnWave(): void {
     const enemyCount = Math.min(2 + Math.floor(this.wave / 2), 6);
     for (let index = 0; index < enemyCount; index += 1) {
-      const x = -14 + index * (28 / Math.max(enemyCount - 1, 1));
-      const y = -3 + (index % 3) * 3;
-      const z = 28 + index * 2;
+      const x = -22 + index * (44 / Math.max(enemyCount - 1, 1));
+      const y = -5 + (index % 4) * 3;
+      const z = 34 + index * 3;
       const speed = 5.5 + this.wave * 0.35;
       this.spawnEnemy(x, y, z, speed);
     }
@@ -250,6 +330,7 @@ export class GameApp {
     for (const enemy of this.enemies) {
       enemy.update(deltaSeconds);
       enemy.group.rotation.z = Math.sin(enemy.position.z * 0.1) * 0.2;
+      enemy.group.rotation.x = 0.08;
 
       if (enemy.canFire() && enemy.position.z < 20) {
         const projectile = new Projectile(0xff5c5c, "enemy", 10 + this.wave);
@@ -334,8 +415,9 @@ export class GameApp {
       health: this.player.health,
       maxHealth: this.player.definition.maxHealth,
       score: this.score,
-      wave: Math.max(1, this.wave - 1),
-      planeName: this.player.definition.name
+      wave: this.flightState === "takeoff" ? 0 : Math.max(1, this.wave - 1),
+      planeName: this.player.definition.name,
+      status: this.flightState === "takeoff" ? "Takeoff" : "Airborne"
     });
   }
 
@@ -368,8 +450,12 @@ export class GameApp {
   private getSnapshot(): GameSnapshot {
     return {
       phase: this.phase,
+      flightState: this.phase === "playing" ? this.flightState : "none",
       score: this.score,
-      wave: Math.max(1, this.wave - (this.phase === "playing" ? 1 : 0)),
+      wave:
+        this.phase === "playing" && this.flightState === "takeoff"
+          ? 0
+          : Math.max(1, this.wave - (this.phase === "playing" ? 1 : 0)),
       health: this.player?.health ?? 0,
       selectedPlaneId: this.selectedPlaneId
     };

@@ -6,6 +6,7 @@ interface HudState {
   score: number;
   wave: number;
   planeName: string;
+  status: string;
 }
 
 export class UIController {
@@ -18,6 +19,7 @@ export class UIController {
   private readonly waveValue: HTMLElement;
   private readonly healthValue: HTMLElement;
   private readonly planeValue: HTMLElement;
+  private readonly statusValue: HTMLElement;
   private readonly gameOver: HTMLElement;
   private readonly gameOverSummary: HTMLElement;
   private readonly launchButton: HTMLButtonElement;
@@ -43,7 +45,7 @@ export class UIController {
           <div class="title-card">
             <p class="eyebrow">Voxel air combat</p>
             <h1>Airplane Fun</h1>
-            <p class="subtitle">Choose a fighter, launch into hostile airspace, and survive escalating waves.</p>
+            <p class="subtitle">Choose a fighter, roll down the runway, and survive escalating waves after takeoff.</p>
             <div class="plane-grid"></div>
             <div class="plane-description"></div>
             <button class="primary-button">Launch Mission</button>
@@ -51,6 +53,7 @@ export class UIController {
         </section>
         <section class="hud hidden" data-state="hud">
           <div><span>Plane</span><strong data-role="plane"></strong></div>
+          <div><span>Status</span><strong data-role="status"></strong></div>
           <div><span>Hull</span><strong data-role="health"></strong></div>
           <div><span>Score</span><strong data-role="score"></strong></div>
           <div><span>Wave</span><strong data-role="wave"></strong></div>
@@ -86,6 +89,7 @@ export class UIController {
     this.waveValue = this.root.querySelector('[data-role="wave"]') as HTMLElement;
     this.healthValue = this.root.querySelector('[data-role="health"]') as HTMLElement;
     this.planeValue = this.root.querySelector('[data-role="plane"]') as HTMLElement;
+    this.statusValue = this.root.querySelector('[data-role="status"]') as HTMLElement;
     this.gameOver = this.root.querySelector(".game-over") as HTMLElement;
     this.gameOverSummary = this.root.querySelector(".summary") as HTMLElement;
     this.launchButton = this.root.querySelector(".primary-button") as HTMLButtonElement;
@@ -103,6 +107,7 @@ export class UIController {
         button.dataset.planeId = plane.id;
         button.innerHTML = `
           <strong>${plane.name}</strong>
+          <span>${plane.role}</span>
           <span>Speed ${plane.speed}</span>
           <span>Hull ${plane.maxHealth}</span>
           <span>Damage ${plane.damage}</span>
@@ -119,7 +124,15 @@ export class UIController {
         this.description.innerHTML = `
           <h2>${selectedPlane.name}</h2>
           <p>${selectedPlane.tagline}</p>
-          <p>Cooldown ${selectedPlane.fireCooldown.toFixed(2)}s</p>
+          <div class="plane-stat-grid">
+            <div><span>Role</span><strong>${selectedPlane.role}</strong></div>
+            <div><span>Ability</span><strong>${selectedPlane.abilityName}</strong></div>
+            <div><span>Speed</span><strong>${selectedPlane.speed}</strong></div>
+            <div><span>Hull</span><strong>${selectedPlane.maxHealth}</strong></div>
+            <div><span>Damage</span><strong>${selectedPlane.damage}</strong></div>
+            <div><span>Cooldown</span><strong>${selectedPlane.fireCooldown.toFixed(2)}s</strong></div>
+          </div>
+          <p><strong>Ability:</strong> ${selectedPlane.abilityDescription}</p>
         `;
       }
     };
@@ -162,6 +175,7 @@ export class UIController {
 
   updateHud(state: HudState): void {
     this.planeValue.textContent = state.planeName;
+    this.statusValue.textContent = state.status;
     this.healthValue.textContent = `${state.health} / ${state.maxHealth}`;
     this.scoreValue.textContent = `${state.score}`;
     this.waveValue.textContent = `${state.wave}`;

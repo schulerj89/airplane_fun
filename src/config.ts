@@ -4,6 +4,9 @@ export interface PlaneDefinition {
   id: PlaneId;
   name: string;
   tagline: string;
+  role: string;
+  abilityName: string;
+  abilityDescription: string;
   speed: number;
   maxHealth: number;
   fireCooldown: number;
@@ -17,6 +20,9 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
     id: "falcon",
     name: "Falcon",
     tagline: "Fast interceptor with balanced firepower.",
+    role: "Interceptor",
+    abilityName: "Afterburner Climb",
+    abilityDescription: "Fastest takeoff and strong all-round handling once airborne.",
     speed: 26,
     maxHealth: 90,
     fireCooldown: 0.2,
@@ -28,6 +34,9 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
     id: "titan",
     name: "Titan",
     tagline: "Heavy bruiser with high hull integrity.",
+    role: "Assault",
+    abilityName: "Siege Frame",
+    abilityDescription: "Highest hull and heavy shots, trading speed for staying power.",
     speed: 18,
     maxHealth: 140,
     fireCooldown: 0.34,
@@ -39,6 +48,9 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
     id: "wraith",
     name: "Wraith",
     tagline: "High-tempo skirmisher with relentless fire.",
+    role: "Skirmisher",
+    abilityName: "Rapid Burst",
+    abilityDescription: "Shortest cooldown, built to keep pressure on enemy formations.",
     speed: 22,
     maxHealth: 80,
     fireCooldown: 0.13,
@@ -49,6 +61,6 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
 ];
 
 export const WORLD_BOUNDS = {
-  x: 20,
-  y: 12
+  x: 30,
+  y: 16
 };
