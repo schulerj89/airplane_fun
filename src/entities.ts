@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { PlaneDefinition } from "./config";
+import { createProjectileModel } from "./models";
 
 export interface Hitbox {
   offset: THREE.Vector3;
@@ -28,13 +29,14 @@ export abstract class Entity {
 
   intersects(other: Entity): boolean {
     for (const hitbox of this.hitboxes) {
-      const center = this.position.clone().add(hitbox.offset);
+      const centerX = this.position.x + hitbox.offset.x;
+      const centerY = this.position.y + hitbox.offset.y;
+      const centerZ = this.position.z + hitbox.offset.z;
       for (const otherHitbox of other.hitboxes) {
-        const otherCenter = other.position.clone().add(otherHitbox.offset);
         const overlaps =
-          Math.abs(center.x - otherCenter.x) < (hitbox.size.x + otherHitbox.size.x) * 0.5 &&
-          Math.abs(center.y - otherCenter.y) < (hitbox.size.y + otherHitbox.size.y) * 0.5 &&
-          Math.abs(center.z - otherCenter.z) < (hitbox.size.z + otherHitbox.size.z) * 0.5;
+          Math.abs(centerX - (other.position.x + otherHitbox.offset.x)) < (hitbox.size.x + otherHitbox.size.x) * 0.5 &&
+          Math.abs(centerY - (other.position.y + otherHitbox.offset.y)) < (hitbox.size.y + otherHitbox.size.y) * 0.5 &&
+          Math.abs(centerZ - (other.position.z + otherHitbox.offset.z)) < (hitbox.size.z + otherHitbox.size.z) * 0.5;
         if (overlaps) {
           return true;
         }
@@ -63,14 +65,7 @@ export class Projectile extends Entity {
   public readonly spawnPosition = new THREE.Vector3();
 
   constructor(color: number, owner: "player" | "enemy", damageAmount: number) {
-    const group = new THREE.Group();
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.5
-    });
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 1.2), material);
-    group.add(mesh);
+    const group = createProjectileModel(color);
     super(group, [{ offset: new THREE.Vector3(), size: new THREE.Vector3(0.22, 0.22, 1) }]);
     this.owner = owner;
     this.damageAmount = damageAmount;
@@ -122,6 +117,9 @@ export class EnemyPlane extends Entity {
   private fireTimer = 1;
   public readonly speed: number;
   public readonly scoreValue: number;
+  public preferredSide = 1;
+  public preferredRange = 14;
+  public verticalBias = 2;
   public readonly flight: FlightKinematics = {
     heading: 0,
     pitch: 0,

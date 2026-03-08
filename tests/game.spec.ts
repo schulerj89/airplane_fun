@@ -52,7 +52,7 @@ test("player can accelerate down the runway, take off, and score points", async 
   await setControl(page, "ArrowUp", "keyup");
   await expect(page.locator('[data-role="status"]')).not.toHaveText("Taxi");
 
-  await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead());
+  await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead(12, 0, 0, 0));
 
   for (let index = 0; index < 18; index += 1) {
     await page.keyboard.press("Space");
@@ -66,6 +66,19 @@ test("player can accelerate down the runway, take off, and score points", async 
       return page.evaluate(() => window.__airplaneFun?.getSnapshot().score ?? 0);
     }, { timeout: 15000 })
     .toBeGreaterThan(0);
+});
+
+test("enemy pursuit logic uses intercepts and close-pass offsets instead of a fixed tail anchor", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  const farBehindPlan = await page.evaluate(() => window.__airplaneFun?.previewEnemyPursuit(28, 22, 0, 16, 1));
+  const closePlan = await page.evaluate(() => window.__airplaneFun?.previewEnemyPursuit(9, 3, 0, 16, -1));
+  const enemyAheadPlan = await page.evaluate(() => window.__airplaneFun?.previewEnemyPursuit(12, -8, 0, 16, 1));
+
+  expect(farBehindPlan?.forwardOffset).toBeGreaterThan(12);
+  expect(farBehindPlan?.lateralTarget).toBeGreaterThan(0);
+  expect(closePlan?.closePass).toBeTruthy();
+  expect(closePlan?.lateralTarget).toBeLessThan(0);
+  expect(enemyAheadPlan?.forwardOffset).toBeLessThan(4);
 });
 
 test("pause freezes play and start over resets the run", async ({ page }) => {
