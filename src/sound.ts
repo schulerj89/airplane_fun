@@ -1,6 +1,100 @@
+import type { PlaneId } from "./config";
+
+interface ShotProfile {
+  primaryType: OscillatorType;
+  secondaryType: OscillatorType;
+  startFrequency: number;
+  endFrequency: number;
+  secondaryStartFrequency: number;
+  secondaryEndFrequency: number;
+  filterType: BiquadFilterType;
+  filterFrequency: number;
+  filterQ: number;
+  gain: number;
+  duration: number;
+}
+
+interface ResolvedShotProfile extends ShotProfile {
+  detuneCents: number;
+}
+
+const SHOT_VARIATION_PATTERN = [-26, 0, 18];
+
+const PLAYER_SHOT_PROFILES: Record<PlaneId, ShotProfile> = {
+  falcon: {
+    primaryType: "square",
+    secondaryType: "sawtooth",
+    startFrequency: 1120,
+    endFrequency: 320,
+    secondaryStartFrequency: 620,
+    secondaryEndFrequency: 210,
+    filterType: "bandpass",
+    filterFrequency: 1750,
+    filterQ: 4.2,
+    gain: 0.04,
+    duration: 0.11
+  },
+  titan: {
+    primaryType: "sawtooth",
+    secondaryType: "triangle",
+    startFrequency: 620,
+    endFrequency: 150,
+    secondaryStartFrequency: 310,
+    secondaryEndFrequency: 90,
+    filterType: "lowpass",
+    filterFrequency: 980,
+    filterQ: 1.4,
+    gain: 0.052,
+    duration: 0.16
+  },
+  wraith: {
+    primaryType: "square",
+    secondaryType: "square",
+    startFrequency: 1380,
+    endFrequency: 460,
+    secondaryStartFrequency: 720,
+    secondaryEndFrequency: 240,
+    filterType: "bandpass",
+    filterFrequency: 2100,
+    filterQ: 5.2,
+    gain: 0.034,
+    duration: 0.09
+  }
+};
+
+const ENEMY_SHOT_PROFILE: ShotProfile = {
+  primaryType: "triangle",
+  secondaryType: "sawtooth",
+  startFrequency: 420,
+  endFrequency: 180,
+  secondaryStartFrequency: 240,
+  secondaryEndFrequency: 110,
+  filterType: "lowpass",
+  filterFrequency: 760,
+  filterQ: 1.2,
+  gain: 0.028,
+  duration: 0.14
+};
+
+export function resolvePlayerShotProfile(planeId: PlaneId, shotIndex: number): ResolvedShotProfile {
+  return {
+    ...PLAYER_SHOT_PROFILES[planeId],
+    detuneCents: SHOT_VARIATION_PATTERN[shotIndex % SHOT_VARIATION_PATTERN.length]
+  };
+}
+
+export function resolveEnemyShotProfile(shotIndex: number): ResolvedShotProfile {
+  return {
+    ...ENEMY_SHOT_PROFILE,
+    detuneCents: SHOT_VARIATION_PATTERN[shotIndex % SHOT_VARIATION_PATTERN.length] - 12
+  };
+}
+
 export class SoundController {
   private audioContext: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  private playerShotCount = 0;
+  private enemyShotCount = 0;
 
   async unlock(): Promise<void> {
     if (!this.audioContext) {
@@ -12,38 +106,14 @@ export class SoundController {
     }
   }
 
-  playLaser(): void {
-    if (!this.audioContext) {
-      return;
-    }
-    const now = this.audioContext.currentTime;
-    const oscillator = this.audioContext.createOscillator();
-    const subOscillator = this.audioContext.createOscillator();
-    const filter = this.audioContext.createBiquadFilter();
-    const gain = this.audioContext.createGain();
+  playPlayerShot(planeId: PlaneId): void {
+    this.playShot(resolvePlayerShotProfile(planeId, this.playerShotCount));
+    this.playerShotCount += 1;
+  }
 
-    oscillator.type = "square";
-    subOscillator.type = "sawtooth";
-    oscillator.frequency.setValueAtTime(980, now);
-    oscillator.frequency.exponentialRampToValueAtTime(260, now + 0.12);
-    subOscillator.frequency.setValueAtTime(490, now);
-    subOscillator.frequency.exponentialRampToValueAtTime(180, now + 0.12);
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(1600, now);
-    filter.Q.value = 4;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-
-    oscillator.connect(filter);
-    subOscillator.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.audioContext.destination);
-
-    oscillator.start(now);
-    subOscillator.start(now);
-    oscillator.stop(now + 0.13);
-    subOscillator.stop(now + 0.13);
+  playEnemyShot(): void {
+    this.playShot(resolveEnemyShotProfile(this.enemyShotCount));
+    this.enemyShotCount += 1;
   }
 
   playHit(): void {
@@ -107,6 +177,42 @@ export class SoundController {
     gain.connect(this.audioContext.destination);
     oscillator.start(now);
     oscillator.stop(now + duration);
+  }
+
+  private playShot(profile: ResolvedShotProfile): void {
+    if (!this.audioContext) {
+      return;
+    }
+    const now = this.audioContext.currentTime;
+    const oscillator = this.audioContext.createOscillator();
+    const subOscillator = this.audioContext.createOscillator();
+    const filter = this.audioContext.createBiquadFilter();
+    const gain = this.audioContext.createGain();
+
+    oscillator.type = profile.primaryType;
+    subOscillator.type = profile.secondaryType;
+    oscillator.detune.value = profile.detuneCents;
+    subOscillator.detune.value = profile.detuneCents * 0.5;
+    oscillator.frequency.setValueAtTime(profile.startFrequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(profile.endFrequency, now + profile.duration);
+    subOscillator.frequency.setValueAtTime(profile.secondaryStartFrequency, now);
+    subOscillator.frequency.exponentialRampToValueAtTime(profile.secondaryEndFrequency, now + profile.duration);
+    filter.type = profile.filterType;
+    filter.frequency.setValueAtTime(profile.filterFrequency, now);
+    filter.Q.value = profile.filterQ;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(profile.gain, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + profile.duration);
+
+    oscillator.connect(filter);
+    subOscillator.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.audioContext.destination);
+
+    oscillator.start(now);
+    subOscillator.start(now);
+    oscillator.stop(now + profile.duration + 0.01);
+    subOscillator.stop(now + profile.duration + 0.01);
   }
 
   private createNoiseBuffer(context: AudioContext): AudioBuffer {

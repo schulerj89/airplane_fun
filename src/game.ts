@@ -711,6 +711,7 @@ export class GameApp {
         projectile.group.lookAt(this.tempVectorB);
         this.projectiles.push(projectile);
         this.entityRoot.add(projectile.group);
+        this.sound.playEnemyShot();
         enemy.resetFireCooldown();
       }
 
@@ -774,7 +775,7 @@ export class GameApp {
     projectile.group.lookAt(this.tempVectorA);
     this.projectiles.push(projectile);
     this.entityRoot.add(projectile.group);
-    this.sound.playLaser();
+    this.sound.playPlayerShot(this.player.definition.id);
   }
 
   private updateCamera(deltaSeconds: number): void {
