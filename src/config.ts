@@ -1,5 +1,8 @@
 export type PlaneId = "falcon" | "titan" | "wraith";
 export type GameModeId = "standard" | "debug";
+export type AudioMixId = "full" | "reduced" | "mute";
+export type CameraZoomId = "close" | "standard" | "wide";
+export type DebugViewId = "full" | "compact" | "hidden";
 
 export interface PlaneDefinition {
   id: PlaneId;
@@ -21,6 +24,17 @@ export interface GameModeDefinition {
   name: string;
   tagline: string;
   description: string;
+}
+
+export interface GameSettings {
+  audioMix: AudioMixId;
+  cameraZoom: CameraZoomId;
+  debugView: DebugViewId;
+}
+
+export interface SettingOption<T extends string> {
+  id: T;
+  label: string;
 }
 
 export const PLANE_DEFINITIONS: PlaneDefinition[] = [
@@ -82,6 +96,30 @@ export const GAME_MODE_DEFINITIONS: GameModeDefinition[] = [
     description: "Use this mode for static combat targets, memory checks, and general mechanic testing."
   }
 ];
+
+export const AUDIO_MIX_OPTIONS: SettingOption<AudioMixId>[] = [
+  { id: "full", label: "Full" },
+  { id: "reduced", label: "Reduced" },
+  { id: "mute", label: "Mute" }
+];
+
+export const CAMERA_ZOOM_OPTIONS: SettingOption<CameraZoomId>[] = [
+  { id: "close", label: "Close" },
+  { id: "standard", label: "Standard" },
+  { id: "wide", label: "Wide" }
+];
+
+export const DEBUG_VIEW_OPTIONS: SettingOption<DebugViewId>[] = [
+  { id: "full", label: "Full" },
+  { id: "compact", label: "Compact" },
+  { id: "hidden", label: "Hidden" }
+];
+
+export const DEFAULT_GAME_SETTINGS: GameSettings = {
+  audioMix: "full",
+  cameraZoom: "standard",
+  debugView: "full"
+};
 
 export const WORLD_BOUNDS = {
   x: 30,

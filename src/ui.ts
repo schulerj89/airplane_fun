@@ -1,4 +1,13 @@
-import { GameModeDefinition, GameModeId, PlaneDefinition, PlaneId } from "./config";
+import {
+  AUDIO_MIX_OPTIONS,
+  CAMERA_ZOOM_OPTIONS,
+  DEBUG_VIEW_OPTIONS,
+  GameModeDefinition,
+  GameModeId,
+  GameSettings,
+  PlaneDefinition,
+  PlaneId
+} from "./config";
 
 interface HudState {
   health: number;
@@ -54,6 +63,7 @@ export class UIController {
   private readonly chunkCountValue: HTMLElement;
   private readonly enemyCountValue: HTMLElement;
   private readonly projectileCountValue: HTMLElement;
+  private readonly settingButtons: Record<keyof GameSettings, HTMLButtonElement>;
 
   constructor(
     container: HTMLElement,
@@ -61,10 +71,12 @@ export class UIController {
     modeDefinitions: GameModeDefinition[],
     initialPlaneId: PlaneId,
     initialModeId: GameModeId,
+    initialSettings: GameSettings,
     onLaunch: (planeId: PlaneId, modeId: GameModeId) => void,
     onRestart: () => void,
     onPauseToggle: () => void,
-    onStartOver: () => void
+    onStartOver: () => void,
+    onCycleSetting: (settingId: keyof GameSettings) => void
   ) {
     this.root = document.createElement("div");
     this.root.className = "game-shell";
@@ -102,14 +114,22 @@ export class UIController {
             <button class="secondary-button" type="button" data-role="start-over">Start Over</button>
           </div>
           <div class="debug-panel" aria-label="Debug panel">
-            <div><span>FPS</span><strong data-role="debug-fps"></strong></div>
-            <div><span>Frame</span><strong data-role="debug-frame-time"></strong></div>
-            <div><span>Memory</span><strong data-role="debug-memory"></strong></div>
-            <div><span>Draw Calls</span><strong data-role="debug-draw-calls"></strong></div>
-            <div><span>Triangles</span><strong data-role="debug-triangles"></strong></div>
-            <div><span>Chunks</span><strong data-role="debug-chunks"></strong></div>
-            <div><span>Enemies</span><strong data-role="debug-enemies"></strong></div>
-            <div><span>Shots</span><strong data-role="debug-projectiles"></strong></div>
+            <div data-debug-detail="core"><span>FPS</span><strong data-role="debug-fps"></strong></div>
+            <div data-debug-detail="core"><span>Frame</span><strong data-role="debug-frame-time"></strong></div>
+            <div data-debug-detail="extended"><span>Memory</span><strong data-role="debug-memory"></strong></div>
+            <div data-debug-detail="extended"><span>Draw Calls</span><strong data-role="debug-draw-calls"></strong></div>
+            <div data-debug-detail="extended"><span>Triangles</span><strong data-role="debug-triangles"></strong></div>
+            <div data-debug-detail="core"><span>Chunks</span><strong data-role="debug-chunks"></strong></div>
+            <div data-debug-detail="core"><span>Enemies</span><strong data-role="debug-enemies"></strong></div>
+            <div data-debug-detail="extended"><span>Shots</span><strong data-role="debug-projectiles"></strong></div>
+          </div>
+          <div class="settings-panel" aria-label="Settings panel">
+            <h3>Settings</h3>
+            <div class="settings-grid">
+              <button class="setting-button" type="button" data-setting-id="audioMix"></button>
+              <button class="setting-button" type="button" data-setting-id="cameraZoom"></button>
+              <button class="setting-button" type="button" data-setting-id="debugView"></button>
+            </div>
           </div>
         </section>
         <section class="game-over hidden" data-state="game-over">
@@ -174,6 +194,11 @@ export class UIController {
     this.chunkCountValue = this.root.querySelector('[data-role="debug-chunks"]') as HTMLElement;
     this.enemyCountValue = this.root.querySelector('[data-role="debug-enemies"]') as HTMLElement;
     this.projectileCountValue = this.root.querySelector('[data-role="debug-projectiles"]') as HTMLElement;
+    this.settingButtons = {
+      audioMix: this.root.querySelector('[data-setting-id="audioMix"]') as HTMLButtonElement,
+      cameraZoom: this.root.querySelector('[data-setting-id="cameraZoom"]') as HTMLButtonElement,
+      debugView: this.root.querySelector('[data-setting-id="debugView"]') as HTMLButtonElement
+    };
 
     let selectedPlaneId = initialPlaneId;
     let selectedModeId = initialModeId;
@@ -247,6 +272,10 @@ export class UIController {
     this.restartButton.addEventListener("click", onRestart);
     this.pauseButton.addEventListener("click", onPauseToggle);
     this.startOverButton.addEventListener("click", onStartOver);
+    for (const [settingId, button] of Object.entries(this.settingButtons) as [keyof GameSettings, HTMLButtonElement][]) {
+      button.addEventListener("click", () => onCycleSetting(settingId));
+    }
+    this.updateSettings(initialSettings);
     this.updatePauseState(false);
   }
 
@@ -311,5 +340,16 @@ export class UIController {
     this.chunkCountValue.textContent = `${state.chunkCount}`;
     this.enemyCountValue.textContent = `${state.enemyCount}`;
     this.projectileCountValue.textContent = `${state.projectileCount}`;
+  }
+
+  updateSettings(settings: GameSettings): void {
+    this.settingButtons.audioMix.textContent = `Audio: ${this.getOptionLabel(AUDIO_MIX_OPTIONS, settings.audioMix)}`;
+    this.settingButtons.cameraZoom.textContent = `Camera: ${this.getOptionLabel(CAMERA_ZOOM_OPTIONS, settings.cameraZoom)}`;
+    this.settingButtons.debugView.textContent = `Debug: ${this.getOptionLabel(DEBUG_VIEW_OPTIONS, settings.debugView)}`;
+    this.root.dataset.debugView = settings.debugView;
+  }
+
+  private getOptionLabel<T extends string>(options: { id: T; label: string }[], value: T): string {
+    return options.find((option) => option.id === value)?.label ?? value;
   }
 }

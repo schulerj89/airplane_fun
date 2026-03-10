@@ -54,6 +54,41 @@ test("debug sandbox disables wave spawns and keeps manual targets parked", async
   expect(parkedTelemetry?.lateralDistance).toBeCloseTo(initialTelemetry?.lateralDistance ?? 0, 3);
 });
 
+test("settings cycle audio, camera, and debug detail levels", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  const audioButton = page.locator('[data-setting-id="audioMix"]');
+  const cameraButton = page.locator('[data-setting-id="cameraZoom"]');
+  const debugButton = page.locator('[data-setting-id="debugView"]');
+
+  await expect(audioButton).toHaveText("Audio: Full");
+  await expect(cameraButton).toHaveText("Camera: Standard");
+  await expect(debugButton).toHaveText("Debug: Full");
+
+  await audioButton.click();
+  await cameraButton.click();
+  await debugButton.click();
+
+  await expect(audioButton).toHaveText("Audio: Reduced");
+  await expect(cameraButton).toHaveText("Camera: Wide");
+  await expect(debugButton).toHaveText("Debug: Compact");
+  await expect(page.locator('[data-role="debug-memory"]')).toBeHidden();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().settings ?? null);
+    })
+    .toEqual({
+      audioMix: "reduced",
+      cameraZoom: "wide",
+      debugView: "compact"
+    });
+
+  await debugButton.click();
+  await expect(debugButton).toHaveText("Debug: Hidden");
+  await expect(page.getByLabel("Debug panel")).toBeHidden();
+});
+
 test("player can accelerate down the runway, take off, and score points", async ({ page }) => {
   await page.goto("/?e2e=1");
   await page.getByRole("button", { name: /Wraith/i }).click();

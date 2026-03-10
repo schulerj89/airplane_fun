@@ -1,7 +1,17 @@
 import * as THREE from "three";
 import { EnemyPlane, PlayerPlane, Projectile } from "./entities";
 import { buildEnemyPursuitPlan, type EnemyPursuitPlan } from "./enemy-ai";
-import { GameModeId, GAME_MODE_DEFINITIONS, PlaneId, PLANE_DEFINITIONS } from "./config";
+import {
+  AUDIO_MIX_OPTIONS,
+  CAMERA_ZOOM_OPTIONS,
+  DEBUG_VIEW_OPTIONS,
+  DEFAULT_GAME_SETTINGS,
+  GameSettings,
+  GameModeId,
+  GAME_MODE_DEFINITIONS,
+  PlaneId,
+  PLANE_DEFINITIONS
+} from "./config";
 import { InputController } from "./input";
 import { createEnemyPlaneModel, createPlayerPlaneModel } from "./models";
 import { SoundController } from "./sound";
@@ -16,6 +26,7 @@ interface GameSnapshot {
   health: number;
   selectedPlaneId: PlaneId;
   selectedModeId: GameModeId;
+  settings: GameSettings;
   chunkCount: number;
   speed: number;
   altitude: number;
@@ -82,6 +93,11 @@ const ENEMY_DESPAWN_DISTANCE = 90;
 const ENEMY_BEHIND_DESPAWN_DISTANCE = 28;
 const ENEMY_BEHIND_DESPAWN_RADIUS = 48;
 const PROJECTILE_DESPAWN_DISTANCE = 110;
+const CAMERA_PROFILES = {
+  close: { distance: 14, groundHeight: 4.7, airborneHeight: 6.6 },
+  standard: { distance: 18, groundHeight: 5.5, airborneHeight: 7.5 },
+  wide: { distance: 24, groundHeight: 6.9, airborneHeight: 8.8 }
+} satisfies Record<GameSettings["cameraZoom"], { distance: number; groundHeight: number; airborneHeight: number }>;
 
 const terrainMaterial = {
   grass: new THREE.MeshStandardMaterial({ color: 0x6bac47, flatShading: true }),
@@ -134,6 +150,7 @@ export class GameApp {
   private phase: Phase = "title";
   private selectedPlaneId: PlaneId = "falcon";
   private selectedModeId: GameModeId = "standard";
+  private settings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
   private score = 0;
   private wave = 1;
   private spawnTimer = 0;
@@ -154,6 +171,7 @@ export class GameApp {
       GAME_MODE_DEFINITIONS,
       this.selectedPlaneId,
       this.selectedModeId,
+      this.settings,
       (planeId, modeId) => {
         void this.startGame(planeId, modeId);
       },
@@ -163,10 +181,12 @@ export class GameApp {
       () => this.togglePause(),
       () => {
         void this.startGame(this.selectedPlaneId, this.selectedModeId);
-      }
+      },
+      (settingId) => this.cycleSetting(settingId)
     );
     this.input = new InputController();
     this.sound = new SoundController();
+    this.sound.setAudioMix(this.settings.audioMix);
     for (const button of this.ui.controlButtons) {
       this.input.bindButton(button, button.dataset.action ?? "");
     }
@@ -784,8 +804,10 @@ export class GameApp {
     }
     this.cameraTarget
       .copy(this.player.position)
-      .addScaledVector(this.playerForward, -18);
-    this.cameraTarget.y += this.isPlayerAirborne ? 7.5 : 5.5;
+      .addScaledVector(this.playerForward, -CAMERA_PROFILES[this.settings.cameraZoom].distance);
+    this.cameraTarget.y += this.isPlayerAirborne
+      ? CAMERA_PROFILES[this.settings.cameraZoom].airborneHeight
+      : CAMERA_PROFILES[this.settings.cameraZoom].groundHeight;
     this.camera.position.lerp(this.cameraTarget, 1 - Math.pow(0.003, deltaSeconds));
     const lookTarget = this.tempVectorA.copy(this.player.position).addScaledVector(this.playerForward, 14);
     lookTarget.y += 1.2;
@@ -964,6 +986,7 @@ export class GameApp {
       health: this.player?.health ?? 0,
       selectedPlaneId: this.selectedPlaneId,
       selectedModeId: this.selectedModeId,
+      settings: { ...this.settings },
       chunkCount: this.chunks.size,
       speed: Math.round(this.player?.flight.speed ?? 0),
       altitude: this.player ? Math.max(0, Math.round(this.player.position.y - this.getTerrainHeightAt(this.player.position.x, this.player.position.z))) : 0,
@@ -1048,6 +1071,23 @@ export class GameApp {
     this.renderer.dispose();
   }
 
+  private cycleSetting(settingId: keyof GameSettings): void {
+    switch (settingId) {
+      case "audioMix":
+        this.settings.audioMix = this.getNextOptionId(AUDIO_MIX_OPTIONS, this.settings.audioMix);
+        break;
+      case "cameraZoom":
+        this.settings.cameraZoom = this.getNextOptionId(CAMERA_ZOOM_OPTIONS, this.settings.cameraZoom);
+        break;
+      case "debugView":
+        this.settings.debugView = this.getNextOptionId(DEBUG_VIEW_OPTIONS, this.settings.debugView);
+        break;
+    }
+
+    this.sound.setAudioMix(this.settings.audioMix);
+    this.ui.updateSettings(this.settings);
+  }
+
   private getPlayerStatusLabel(): string {
     const prefix = this.selectedModeId === "debug" ? "Debug " : "";
     if (this.isPlayerAirborne) {
@@ -1073,5 +1113,11 @@ export class GameApp {
 
   private isSandboxMode(): boolean {
     return this.e2eMode || this.isDebugMode();
+  }
+
+  private getNextOptionId<T extends string>(options: { id: T }[], current: T): T {
+    const currentIndex = options.findIndex((option) => option.id === current);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % options.length : 0;
+    return options[nextIndex].id;
   }
 }

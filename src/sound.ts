@@ -1,4 +1,4 @@
-import type { PlaneId } from "./config";
+import type { AudioMixId, PlaneId } from "./config";
 
 interface ShotProfile {
   primaryType: OscillatorType;
@@ -95,6 +95,11 @@ export class SoundController {
   private noiseBuffer: AudioBuffer | null = null;
   private playerShotCount = 0;
   private enemyShotCount = 0;
+  private audioMix: AudioMixId = "full";
+
+  setAudioMix(audioMix: AudioMixId): void {
+    this.audioMix = audioMix;
+  }
 
   async unlock(): Promise<void> {
     if (!this.audioContext) {
@@ -124,6 +129,10 @@ export class SoundController {
     if (!this.audioContext || !this.noiseBuffer) {
       return;
     }
+    const mixGainScale = this.getMixGainScale();
+    if (mixGainScale === 0) {
+      return;
+    }
     const now = this.audioContext.currentTime;
     const noise = this.audioContext.createBufferSource();
     const noiseFilter = this.audioContext.createBiquadFilter();
@@ -134,13 +143,13 @@ export class SoundController {
     noise.buffer = this.noiseBuffer;
     noiseFilter.type = "lowpass";
     noiseFilter.frequency.setValueAtTime(900, now);
-    noiseGain.gain.setValueAtTime(0.05, now);
+    noiseGain.gain.setValueAtTime(0.05 * mixGainScale, now);
     noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
 
     oscillator.type = "triangle";
     oscillator.frequency.setValueAtTime(140, now);
     oscillator.frequency.exponentialRampToValueAtTime(48, now + 0.24);
-    toneGain.gain.setValueAtTime(0.03, now);
+    toneGain.gain.setValueAtTime(0.03 * mixGainScale, now);
     toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
 
     noise.connect(noiseFilter);
@@ -165,13 +174,17 @@ export class SoundController {
     if (!this.audioContext) {
       return;
     }
+    const mixGainScale = this.getMixGainScale();
+    if (mixGainScale === 0) {
+      return;
+    }
     const now = this.audioContext.currentTime;
     const oscillator = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, now);
     oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + duration);
-    gain.gain.setValueAtTime(gainValue, now);
+    gain.gain.setValueAtTime(gainValue * mixGainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
     oscillator.connect(gain);
     gain.connect(this.audioContext.destination);
@@ -181,6 +194,10 @@ export class SoundController {
 
   private playShot(profile: ResolvedShotProfile): void {
     if (!this.audioContext) {
+      return;
+    }
+    const mixGainScale = this.getMixGainScale();
+    if (mixGainScale === 0) {
       return;
     }
     const now = this.audioContext.currentTime;
@@ -201,7 +218,7 @@ export class SoundController {
     filter.frequency.setValueAtTime(profile.filterFrequency, now);
     filter.Q.value = profile.filterQ;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(profile.gain, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(profile.gain * mixGainScale, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + profile.duration);
 
     oscillator.connect(filter);
@@ -213,6 +230,17 @@ export class SoundController {
     subOscillator.start(now);
     oscillator.stop(now + profile.duration + 0.01);
     subOscillator.stop(now + profile.duration + 0.01);
+  }
+
+  private getMixGainScale(): number {
+    switch (this.audioMix) {
+      case "reduced":
+        return 0.45;
+      case "mute":
+        return 0;
+      default:
+        return 1;
+    }
   }
 
   private createNoiseBuffer(context: AudioContext): AudioBuffer {

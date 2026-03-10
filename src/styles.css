@@ -220,6 +220,7 @@ h1 {
   top: 1rem;
   left: 1rem;
   right: 1rem;
+  z-index: 2;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.75rem;
@@ -250,6 +251,7 @@ h1 {
   position: absolute;
   top: 7rem;
   right: 1rem;
+  z-index: 3;
   width: min(20rem, calc(100vw - 2rem));
   display: grid;
   gap: 0.75rem;
@@ -267,7 +269,8 @@ h1 {
 }
 
 .pause-banner,
-.debug-panel div {
+.debug-panel div,
+.settings-panel {
   padding: 0.9rem 1rem;
   border-radius: 1rem;
   background: rgba(10, 19, 33, 0.72);
@@ -303,9 +306,42 @@ h1 {
   font-size: 1rem;
 }
 
+.settings-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a5bad0;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.setting-button {
+  width: 100%;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f6f7fb;
+  text-align: left;
+  cursor: pointer;
+}
+
+.game-shell[data-debug-view="compact"] [data-debug-detail="extended"] {
+  display: none;
+}
+
+.game-shell[data-debug-view="hidden"] .debug-panel {
+  display: none;
+}
+
 .mobile-controls {
   position: absolute;
   inset: auto 1rem 1rem 1rem;
+  z-index: 2;
   display: flex;
   align-items: end;
   justify-content: space-between;
