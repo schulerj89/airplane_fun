@@ -1,4 +1,5 @@
 export type PlaneId = "falcon" | "titan" | "wraith";
+export type GameModeId = "standard" | "debug";
 
 export interface PlaneDefinition {
   id: PlaneId;
@@ -13,6 +14,13 @@ export interface PlaneDefinition {
   damage: number;
   color: number;
   accent: number;
+}
+
+export interface GameModeDefinition {
+  id: GameModeId;
+  name: string;
+  tagline: string;
+  description: string;
 }
 
 export const PLANE_DEFINITIONS: PlaneDefinition[] = [
@@ -57,6 +65,21 @@ export const PLANE_DEFINITIONS: PlaneDefinition[] = [
     damage: 9,
     color: 0x8cffb7,
     accent: 0x6e80ff
+  }
+];
+
+export const GAME_MODE_DEFINITIONS: GameModeDefinition[] = [
+  {
+    id: "standard",
+    name: "Standard Mission",
+    tagline: "Enemy waves build pressure while you launch and fight across the streamed sky.",
+    description: "Full combat loop with hostile spawns, return fire, and threat escalation."
+  },
+  {
+    id: "debug",
+    name: "Debug Sandbox",
+    tagline: "No enemy waves and manual spawns stay parked so you can inspect hitboxes and performance.",
+    description: "Use this mode for static combat targets, memory checks, and general mechanic testing."
   }
 ];
 

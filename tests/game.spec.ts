@@ -13,8 +13,45 @@ test("title screen shows three airplane options", async ({ page }) => {
   await page.goto("/?e2e=1");
   await expect(page.getByRole("heading", { name: "Airplane Fun" })).toBeVisible();
   await expect(page.locator("[data-plane-id]")).toHaveCount(3);
+  await expect(page.locator("[data-mode-id]")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Launch Mission" })).toBeVisible();
   await expect(page.locator(".plane-stat-grid")).toBeVisible();
+});
+
+test("debug sandbox disables wave spawns and keeps manual targets parked", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Debug Sandbox/i }).click();
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  await expect(page.locator('[data-state="hud"]')).toBeVisible();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().selectedModeId ?? "missing");
+    })
+    .toBe("debug");
+  await expect(page.locator('[data-role="status"]')).toHaveText("Debug Taxi");
+
+  await page.waitForTimeout(3200);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().enemyCount ?? -1);
+    })
+    .toBe(0);
+
+  await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead(12, 0, 0, 12));
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getEnemyTelemetry()[0]?.speed ?? -1);
+    })
+    .toBe(0);
+
+  const initialTelemetry = await page.evaluate(() => window.__airplaneFun?.getEnemyTelemetry()[0]);
+  await page.waitForTimeout(600);
+  const parkedTelemetry = await page.evaluate(() => window.__airplaneFun?.getEnemyTelemetry()[0]);
+
+  expect(parkedTelemetry?.distance).toBeCloseTo(initialTelemetry?.distance ?? 0, 3);
+  expect(parkedTelemetry?.forwardDistance).toBeCloseTo(initialTelemetry?.forwardDistance ?? 0, 3);
+  expect(parkedTelemetry?.lateralDistance).toBeCloseTo(initialTelemetry?.lateralDistance ?? 0, 3);
 });
 
 test("player can accelerate down the runway, take off, and score points", async ({ page }) => {

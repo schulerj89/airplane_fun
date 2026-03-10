@@ -1,4 +1,4 @@
-import { PlaneDefinition, PlaneId } from "./config";
+import { GameModeDefinition, GameModeId, PlaneDefinition, PlaneId } from "./config";
 
 interface HudState {
   health: number;
@@ -27,6 +27,8 @@ export class UIController {
   private readonly titleScreen: HTMLElement;
   private readonly selectionPanel: HTMLElement;
   private readonly description: HTMLElement;
+  private readonly modePanel: HTMLElement;
+  private readonly modeDescription: HTMLElement;
   private readonly hud: HTMLElement;
   private readonly scoreValue: HTMLElement;
   private readonly waveValue: HTMLElement;
@@ -56,8 +58,10 @@ export class UIController {
   constructor(
     container: HTMLElement,
     planeDefinitions: PlaneDefinition[],
+    modeDefinitions: GameModeDefinition[],
     initialPlaneId: PlaneId,
-    onLaunch: (planeId: PlaneId) => void,
+    initialModeId: GameModeId,
+    onLaunch: (planeId: PlaneId, modeId: GameModeId) => void,
     onRestart: () => void,
     onPauseToggle: () => void,
     onStartOver: () => void
@@ -75,6 +79,8 @@ export class UIController {
             <p class="eyebrow">Voxel air combat</p>
             <h1>Airplane Fun</h1>
             <p class="subtitle">Launch from the runway, build speed, rotate into the climb, and clear hostile fighters across the streamed voxel sky.</p>
+            <div class="mode-grid"></div>
+            <div class="mode-description"></div>
             <div class="plane-grid"></div>
             <div class="plane-description"></div>
             <button class="primary-button">Launch Mission</button>
@@ -141,6 +147,8 @@ export class UIController {
     this.titleScreen = this.root.querySelector(".title-screen") as HTMLElement;
     this.selectionPanel = this.root.querySelector(".plane-grid") as HTMLElement;
     this.description = this.root.querySelector(".plane-description") as HTMLElement;
+    this.modePanel = this.root.querySelector(".mode-grid") as HTMLElement;
+    this.modeDescription = this.root.querySelector(".mode-description") as HTMLElement;
     this.hud = this.root.querySelector(".hud") as HTMLElement;
     this.scoreValue = this.root.querySelector('[data-role="score"]') as HTMLElement;
     this.waveValue = this.root.querySelector('[data-role="wave"]') as HTMLElement;
@@ -168,8 +176,34 @@ export class UIController {
     this.projectileCountValue = this.root.querySelector('[data-role="debug-projectiles"]') as HTMLElement;
 
     let selectedPlaneId = initialPlaneId;
+    let selectedModeId = initialModeId;
 
     const renderSelection = (): void => {
+      this.modePanel.innerHTML = "";
+      for (const mode of modeDefinitions) {
+        const button = document.createElement("button");
+        button.className = mode.id === selectedModeId ? "mode-option active" : "mode-option";
+        button.type = "button";
+        button.dataset.modeId = mode.id;
+        button.innerHTML = `
+          <strong>${mode.name}</strong>
+          <span>${mode.tagline}</span>
+        `;
+        button.addEventListener("click", () => {
+          selectedModeId = mode.id;
+          renderSelection();
+        });
+        this.modePanel.append(button);
+      }
+
+      const selectedMode = modeDefinitions.find((mode) => mode.id === selectedModeId);
+      if (selectedMode) {
+        this.modeDescription.innerHTML = `
+          <h2>${selectedMode.name}</h2>
+          <p>${selectedMode.description}</p>
+        `;
+      }
+
       this.selectionPanel.innerHTML = "";
       for (const plane of planeDefinitions) {
         const button = document.createElement("button");
@@ -209,7 +243,7 @@ export class UIController {
     };
 
     renderSelection();
-    this.launchButton.addEventListener("click", () => onLaunch(selectedPlaneId));
+    this.launchButton.addEventListener("click", () => onLaunch(selectedPlaneId, selectedModeId));
     this.restartButton.addEventListener("click", onRestart);
     this.pauseButton.addEventListener("click", onPauseToggle);
     this.startOverButton.addEventListener("click", onStartOver);

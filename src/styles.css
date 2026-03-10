@@ -107,6 +107,40 @@ h1 {
   margin: 1.5rem 0;
 }
 
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.mode-option {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f6f7fb;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mode-option.active {
+  border-color: #8bd4ff;
+  background: rgba(139, 212, 255, 0.18);
+  transform: translateY(-2px);
+}
+
+.mode-option span {
+  color: #b6c7d9;
+  font-size: 0.92rem;
+}
+
+.mode-description {
+  min-height: 4.5rem;
+}
+
 .plane-option {
   display: grid;
   gap: 0.45rem;
@@ -329,6 +363,7 @@ h1 {
 
 @media (max-width: 800px) {
   .plane-grid,
+  .mode-grid,
   .plane-stat-grid,
   .hud,
   .debug-panel,

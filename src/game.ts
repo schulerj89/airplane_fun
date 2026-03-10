@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { EnemyPlane, PlayerPlane, Projectile } from "./entities";
 import { buildEnemyPursuitPlan, type EnemyPursuitPlan } from "./enemy-ai";
-import { PlaneId, PLANE_DEFINITIONS } from "./config";
+import { GameModeId, GAME_MODE_DEFINITIONS, PlaneId, PLANE_DEFINITIONS } from "./config";
 import { InputController } from "./input";
 import { createEnemyPlaneModel, createPlayerPlaneModel } from "./models";
 import { SoundController } from "./sound";
@@ -15,6 +15,7 @@ interface GameSnapshot {
   wave: number;
   health: number;
   selectedPlaneId: PlaneId;
+  selectedModeId: GameModeId;
   chunkCount: number;
   speed: number;
   altitude: number;
@@ -132,6 +133,7 @@ export class GameApp {
   private player: PlayerPlane | null = null;
   private phase: Phase = "title";
   private selectedPlaneId: PlaneId = "falcon";
+  private selectedModeId: GameModeId = "standard";
   private score = 0;
   private wave = 1;
   private spawnTimer = 0;
@@ -149,16 +151,18 @@ export class GameApp {
     this.ui = new UIController(
       container,
       PLANE_DEFINITIONS,
+      GAME_MODE_DEFINITIONS,
       this.selectedPlaneId,
-      (planeId) => {
-        void this.startGame(planeId);
+      this.selectedModeId,
+      (planeId, modeId) => {
+        void this.startGame(planeId, modeId);
       },
       () => {
-        void this.startGame(this.selectedPlaneId);
+        void this.startGame(this.selectedPlaneId, this.selectedModeId);
       },
       () => this.togglePause(),
       () => {
-        void this.startGame(this.selectedPlaneId);
+        void this.startGame(this.selectedPlaneId, this.selectedModeId);
       }
     );
     this.input = new InputController();
@@ -243,15 +247,16 @@ export class GameApp {
     this.worldRoot.add(clouds);
   }
 
-  private async startGame(planeId: PlaneId): Promise<void> {
+  private async startGame(planeId: PlaneId, modeId = this.selectedModeId): Promise<void> {
     this.selectedPlaneId = planeId;
+    this.selectedModeId = modeId;
     await this.sound.unlock();
     this.phase = "playing";
     this.score = 0;
     this.wave = 1;
-    this.spawnTimer = this.e2eMode ? 99 : 2.6;
+    this.spawnTimer = this.isSandboxMode() ? Number.POSITIVE_INFINITY : 2.6;
     this.chunkPulse = 0;
-    this.hudStatus = "Taxi";
+    this.hudStatus = this.selectedModeId === "debug" ? "Debug Taxi" : "Taxi";
     this.isPlayerAirborne = false;
     this.input.reset();
     this.ui.updatePauseState(false);
@@ -371,15 +376,7 @@ export class GameApp {
     );
     this.player.group.rotation.set(-this.player.flight.pitch, this.player.flight.heading, this.player.flight.roll);
 
-    this.hudStatus = this.isPlayerAirborne
-      ? this.player.flight.pitch > 0.12
-        ? "Climbing"
-        : this.player.flight.pitch < -0.08
-          ? "Diving"
-          : "Airborne"
-      : this.player.flight.speed > 3
-        ? "Takeoff Roll"
-        : "Taxi";
+    this.hudStatus = this.getPlayerStatusLabel();
 
     this.player.updateFireTimer(deltaSeconds);
     if (this.input.isPressed("fire") && this.player.canFire()) {
@@ -541,7 +538,7 @@ export class GameApp {
   }
 
   private updateCombat(deltaSeconds: number): void {
-    if (!this.player || this.e2eMode) {
+    if (!this.player || this.isSandboxMode()) {
       return;
     }
 
@@ -585,7 +582,8 @@ export class GameApp {
     const laneAltitude = this.e2eMode
       ? Math.max(1.5, this.player.position.y + this.playerForward.y * distance + altitudeOffset - targetGround)
       : Math.max(altitudeOffset, this.player.position.y - targetGround);
-    this.spawnEnemyAt(targetX, targetZ, laneAltitude, speedOverride ?? (this.e2eMode ? 3 : 8), this.e2eMode ? 8 : 24, 100);
+    const enemySpeed = this.isDebugMode() ? 0 : speedOverride ?? (this.e2eMode ? 3 : 8);
+    this.spawnEnemyAt(targetX, targetZ, laneAltitude, enemySpeed, this.e2eMode ? 8 : 24, 100);
   }
 
   private spawnEnemyAt(
@@ -625,6 +623,15 @@ export class GameApp {
 
     for (let index = 0; index < this.enemies.length; index += 1) {
       const enemy = this.enemies[index];
+      if (this.isDebugMode()) {
+        enemy.flight.speed = 0;
+        enemy.flight.pitch = 0;
+        enemy.flight.roll = 0;
+        enemy.group.rotation.set(0, enemy.flight.heading, 0);
+        enemy.update(deltaSeconds);
+        continue;
+      }
+
       if (this.e2eMode) {
         const forward = this.getForwardVector(enemy.flight.heading, enemy.flight.pitch);
         enemy.position.addScaledVector(forward, enemy.flight.speed * deltaSeconds);
@@ -837,7 +844,7 @@ export class GameApp {
       health: this.player.health,
       maxHealth: this.player.definition.maxHealth,
       score: this.score,
-      wave: Math.max(1, this.wave - (this.e2eMode ? 0 : 1)),
+      wave: this.isDebugMode() ? 0 : Math.max(1, this.wave - (this.e2eMode ? 0 : 1)),
       planeName: this.player.definition.name,
       status: this.hudStatus,
       speed: Math.round(this.player.flight.speed),
@@ -948,9 +955,14 @@ export class GameApp {
     return {
       phase: this.phase,
       score: this.score,
-      wave: this.phase === "playing" || this.phase === "paused" ? Math.max(1, this.wave - 1) : this.wave,
+      wave: this.isDebugMode()
+        ? 0
+        : this.phase === "playing" || this.phase === "paused"
+          ? Math.max(1, this.wave - 1)
+          : this.wave,
       health: this.player?.health ?? 0,
       selectedPlaneId: this.selectedPlaneId,
+      selectedModeId: this.selectedModeId,
       chunkCount: this.chunks.size,
       speed: Math.round(this.player?.flight.speed ?? 0),
       altitude: this.player ? Math.max(0, Math.round(this.player.position.y - this.getTerrainHeightAt(this.player.position.x, this.player.position.z))) : 0,
@@ -1033,5 +1045,32 @@ export class GameApp {
     this.clearEntities();
     this.clearChunks();
     this.renderer.dispose();
+  }
+
+  private getPlayerStatusLabel(): string {
+    const prefix = this.selectedModeId === "debug" ? "Debug " : "";
+    if (this.isPlayerAirborne) {
+      if (this.player && this.player.flight.pitch > 0.12) {
+        return `${prefix}Climbing`;
+      }
+      if (this.player && this.player.flight.pitch < -0.08) {
+        return `${prefix}Diving`;
+      }
+      return `${prefix}Airborne`;
+    }
+
+    if (this.player && this.player.flight.speed > 3) {
+      return this.selectedModeId === "debug" ? "Debug Roll" : "Takeoff Roll";
+    }
+
+    return `${prefix}Taxi`;
+  }
+
+  private isDebugMode(): boolean {
+    return this.selectedModeId === "debug";
+  }
+
+  private isSandboxMode(): boolean {
+    return this.e2eMode || this.isDebugMode();
   }
 }
