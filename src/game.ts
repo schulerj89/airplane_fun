@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { EnemyPlane, PlayerPlane, Projectile } from "./entities";
+import { buildEnemyPursuitPlan, type EnemyPursuitPlan } from "./enemy-ai";
 import { PlaneId, PLANE_DEFINITIONS } from "./config";
 import { InputController } from "./input";
 import { createEnemyPlaneModel, createPlayerPlaneModel } from "./models";
@@ -26,12 +27,6 @@ interface EnemyTelemetry {
   forwardDistance: number;
   lateralDistance: number;
   speed: number;
-}
-
-interface EnemyPursuitPlan {
-  forwardOffset: number;
-  lateralTarget: number;
-  closePass: boolean;
 }
 
 interface VoxelChunk {
@@ -616,6 +611,8 @@ export class GameApp {
     enemy.preferredSide = sideSeed >= 0.5 ? 1 : -1;
     enemy.preferredRange = 12 + rangeSeed * 8;
     enemy.verticalBias = 1.5 + altitudeSeed * 3.5;
+    enemy.behaviorSeed = this.hash(x * 0.067 + z * 0.041 + scoreValue * 0.013 + this.wave * 0.19);
+    enemy.behaviorTime = enemy.behaviorSeed * Math.PI * 4;
     enemy.group.rotation.order = "YXZ";
     this.enemies.push(enemy);
     this.entityRoot.add(enemy.group);
@@ -647,23 +644,28 @@ export class GameApp {
       const playerRightX = this.playerForward.z;
       const playerRightZ = -this.playerForward.x;
       const lateralDistance = toPlayer.x * playerRightX + toPlayer.z * playerRightZ;
+      enemy.behaviorTime += deltaSeconds;
       const pursuitPlan = this.previewEnemyPursuit(
         distance,
         forwardDistance,
         lateralDistance,
         enemy.preferredRange,
-        enemy.preferredSide
+        enemy.preferredSide,
+        enemy.behaviorSeed,
+        enemy.behaviorTime
       );
       const target = this.tempVectorB
         .copy(this.player.position)
         .addScaledVector(this.playerForward, pursuitPlan.forwardOffset);
-      target.x += playerRightX * (pursuitPlan.lateralTarget - lateralDistance) * 0.7;
-      target.z += playerRightZ * (pursuitPlan.lateralTarget - lateralDistance) * 0.7;
+      const lateralCorrection = pursuitPlan.breakaway ? 0.38 : pursuitPlan.closePass ? 0.5 : 0.62;
+      target.x += playerRightX * (pursuitPlan.lateralTarget - lateralDistance) * lateralCorrection;
+      target.z += playerRightZ * (pursuitPlan.lateralTarget - lateralDistance) * lateralCorrection;
       target.y += enemy.verticalBias + (this.isPlayerAirborne ? 0.5 : 3.5);
 
-      if (pursuitPlan.closePass) {
-        target.x += playerRightX * enemy.preferredSide * 5;
-        target.z += playerRightZ * enemy.preferredSide * 5;
+      if (pursuitPlan.closePass || pursuitPlan.breakaway) {
+        const passWidth = pursuitPlan.breakaway ? 7.5 : 5;
+        target.x += playerRightX * enemy.preferredSide * passWidth;
+        target.z += playerRightZ * enemy.preferredSide * passWidth;
       }
 
       const toTarget = this.tempVectorC.copy(target).sub(enemy.position);
@@ -671,12 +673,14 @@ export class GameApp {
       const desiredHeading = Math.atan2(toTarget.x, toTarget.z);
       const desiredPitch = THREE.MathUtils.clamp(Math.atan2(toTarget.y, horizontalDistance), -0.4, 0.35);
       const headingDelta = this.angleDelta(enemy.flight.heading, desiredHeading);
-      enemy.flight.heading += headingDelta * Math.min(1, 1.05 * deltaSeconds);
-      enemy.flight.pitch += (desiredPitch - enemy.flight.pitch) * Math.min(1, 1.35 * deltaSeconds);
-      const desiredSpeed =
+      enemy.flight.heading += headingDelta * Math.min(1, pursuitPlan.turnResponsiveness * deltaSeconds);
+      enemy.flight.pitch +=
+        (desiredPitch - enemy.flight.pitch) * Math.min(1, (pursuitPlan.turnResponsiveness + 0.3) * deltaSeconds);
+      const desiredSpeedBase =
         distance > enemy.preferredRange
           ? enemy.speed + Math.min(5, (distance - enemy.preferredRange) * 0.18)
           : Math.max(enemy.speed * 0.78, enemy.speed - Math.min(2.8, (enemy.preferredRange - distance) * 0.3));
+      const desiredSpeed = Math.max(enemy.speed * 0.72, desiredSpeedBase + pursuitPlan.speedBias);
       enemy.flight.speed = THREE.MathUtils.damp(enemy.flight.speed, desiredSpeed, 2.2, deltaSeconds);
 
       const forward = this.getForwardVector(enemy.flight.heading, enemy.flight.pitch);
@@ -979,24 +983,21 @@ export class GameApp {
   private previewEnemyPursuit(
     distance: number,
     forwardDistance: number,
-    _lateralDistance: number,
+    lateralDistance: number,
     preferredRange = 16,
-    preferredSide = 1
+    preferredSide = 1,
+    behaviorSeed = 0.5,
+    behaviorTime = 0
   ): EnemyPursuitPlan {
-    let forwardOffset = 2;
-    if (distance > preferredRange + 10 || forwardDistance > preferredRange * 0.75) {
-      forwardOffset = 10 + preferredRange * 0.45;
-    } else if (distance < preferredRange * 0.65) {
-      forwardOffset = 8 + preferredRange * 0.4;
-    } else if (forwardDistance < -6) {
-      forwardOffset = 1.5;
-    }
-
-    return {
-      forwardOffset,
-      lateralTarget: preferredSide * (6 + Math.min(8, distance * 0.18)),
-      closePass: distance < preferredRange * 0.8
-    };
+    return buildEnemyPursuitPlan({
+      distance,
+      forwardDistance,
+      lateralDistance,
+      preferredRange,
+      preferredSide,
+      behaviorSeed,
+      behaviorTime
+    });
   }
 
   private getDebugState(): {

@@ -120,6 +120,8 @@ export class EnemyPlane extends Entity {
   public preferredSide = 1;
   public preferredRange = 14;
   public verticalBias = 2;
+  public behaviorSeed = 0.5;
+  public behaviorTime = 0;
   public readonly flight: FlightKinematics = {
     heading: 0,
     pitch: 0,
