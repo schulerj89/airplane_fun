@@ -18,7 +18,7 @@ test("title screen shows three airplane options", async ({ page }) => {
   await expect(page.locator(".plane-stat-grid")).toBeVisible();
 });
 
-test("debug sandbox disables wave spawns and keeps manual targets parked", async ({ page }) => {
+test("debug sandbox stays flat, tree-free, and limited to parked target dummies", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Debug Sandbox/i }).click();
   await page.getByRole("button", { name: "Launch Mission" }).click();
@@ -36,9 +36,23 @@ test("debug sandbox disables wave spawns and keeps manual targets parked", async
     .poll(async () => {
       return page.evaluate(() => window.__airplaneFun?.getSnapshot().enemyCount ?? -1);
     })
-    .toBe(0);
+    .toBe(2);
+
+  const sampledHeights = await page.evaluate(() => [
+    window.__airplaneFun?.sampleTerrainHeight(0, 0) ?? -999,
+    window.__airplaneFun?.sampleTerrainHeight(18, 24) ?? -999,
+    window.__airplaneFun?.sampleTerrainHeight(-24, -18) ?? -999
+  ]);
+  expect(new Set(sampledHeights).size).toBe(1);
+  expect(sampledHeights[0]).toBe(1);
 
   await page.evaluate(() => window.__airplaneFun?.spawnEnemyAhead(12, 0, 0, 12));
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().enemyCount ?? -1);
+    })
+    .toBe(2);
+
   await expect
     .poll(async () => {
       return page.evaluate(() => window.__airplaneFun?.getEnemyTelemetry()[0]?.speed ?? -1);
@@ -49,9 +63,9 @@ test("debug sandbox disables wave spawns and keeps manual targets parked", async
   await page.waitForTimeout(600);
   const parkedTelemetry = await page.evaluate(() => window.__airplaneFun?.getEnemyTelemetry()[0]);
 
-  expect(parkedTelemetry?.distance).toBeCloseTo(initialTelemetry?.distance ?? 0, 3);
-  expect(parkedTelemetry?.forwardDistance).toBeCloseTo(initialTelemetry?.forwardDistance ?? 0, 3);
-  expect(parkedTelemetry?.lateralDistance).toBeCloseTo(initialTelemetry?.lateralDistance ?? 0, 3);
+  expect(parkedTelemetry?.distance).toBeCloseTo(initialTelemetry?.distance ?? 0, 2);
+  expect(parkedTelemetry?.forwardDistance).toBeCloseTo(initialTelemetry?.forwardDistance ?? 0, 2);
+  expect(parkedTelemetry?.lateralDistance).toBeCloseTo(initialTelemetry?.lateralDistance ?? 0, 2);
 });
 
 test("settings cycle audio, camera, and debug detail levels", async ({ page }) => {

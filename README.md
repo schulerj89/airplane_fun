@@ -5,11 +5,12 @@ Airplane Fun is a browser-based voxel-inspired airplane fighter game built with 
 ## Gameplay
 - Title screen with three playable aircraft: Falcon, Titan, and Wraith
 - Selectable `Standard Mission` and `Debug Sandbox` launch modes
+- Debug Sandbox uses flat terrain, no trees, and two parked targets for quick testing
 - Runway starts with manual throttle, pitch, yaw, and air combat
 - In-game cycle settings for audio mix, camera zoom, and debug panel detail
 - Keyboard and on-screen button controls
 - Enemy waves, score tracking, hull meter, and restart loop
-- Functional browser tests with Playwright
+- Unit tests with Vitest and browser tests with Playwright
 
 ## Controls
 - Throttle: `W` / `S`
@@ -21,6 +22,7 @@ Airplane Fun is a browser-based voxel-inspired airplane fighter game built with 
 - `npm install`
 - `npm run dev`
 - `npm run build`
+- `npm run test:unit`
 - `npm run test:functional`
 
 ## Architecture

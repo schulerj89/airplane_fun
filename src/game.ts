@@ -59,6 +59,7 @@ declare global {
     __airplaneFun?: {
       getSnapshot: () => GameSnapshot;
       getEnemyTelemetry: () => EnemyTelemetry[];
+      sampleTerrainHeight: (x: number, z: number) => number;
       previewEnemyPursuit: (
         distance: number,
         forwardDistance: number,
@@ -220,6 +221,7 @@ export class GameApp {
     window.__airplaneFun = {
       getSnapshot: () => this.getSnapshot(),
       getEnemyTelemetry: () => this.getEnemyTelemetry(),
+      sampleTerrainHeight: (x, z) => this.getTerrainHeightAt(x, z),
       previewEnemyPursuit: (distance, forwardDistance, lateralDistance, preferredRange, preferredSide) =>
         this.previewEnemyPursuit(distance, forwardDistance, lateralDistance, preferredRange, preferredSide),
       destroyPlayer: () => {
@@ -299,6 +301,10 @@ export class GameApp {
     this.entityRoot.add(this.player.group);
 
     this.ensureWorldAroundPlayer();
+    if (this.isDebugMode()) {
+      this.spawnDebugTargets();
+      this.ensureWorldAroundPlayer();
+    }
 
     this.ui.showGameplay();
     this.updateHud();
@@ -486,7 +492,7 @@ export class GameApp {
         group.add(grass);
 
         const treeSeed = this.hash(worldX * 19 + worldZ * 31);
-        if (!this.isRunwayShoulder(worldX + 0.5, worldZ + 0.5) && treeSeed > 0.82 && top > -1 && top < 6) {
+        if (!this.isDebugMode() && !this.isRunwayShoulder(worldX + 0.5, worldZ + 0.5) && treeSeed > 0.82 && top > -1 && top < 6) {
           const trunkHeight = 2 + Math.floor(this.hash(worldX * 11 - worldZ * 7) * 2);
           const trunk = new THREE.Mesh(getBoxGeometry(1, trunkHeight, 1), terrainMaterial.trunk);
           trunk.position.set(worldX + 0.5, top + trunkHeight * 0.5 + 0.4, worldZ + 0.5);
@@ -567,7 +573,7 @@ export class GameApp {
       return;
     }
 
-    const availableSlots = Math.max(0, MAX_ACTIVE_ENEMIES - this.enemies.length);
+    const availableSlots = Math.max(0, this.getMaxActiveEnemies() - this.enemies.length);
     if (availableSlots === 0) {
       this.spawnTimer = 0.6;
       return;
@@ -593,7 +599,7 @@ export class GameApp {
   }
 
   private spawnEnemyAhead(distance: number, lateralOffset: number, altitudeOffset: number, speedOverride?: number): void {
-    if (!this.player || this.enemies.length >= MAX_ACTIVE_ENEMIES) {
+    if (!this.player || this.enemies.length >= this.getMaxActiveEnemies()) {
       return;
     }
     const targetX = this.player.position.x + this.playerForward.x * distance + lateralOffset;
@@ -920,6 +926,9 @@ export class GameApp {
   }
 
   private getTerrainHeightAt(x: number, z: number): number {
+    if (this.isDebugMode()) {
+      return RUNWAY_HEIGHT;
+    }
     if (this.isRunwayShoulder(x, z)) {
       return RUNWAY_HEIGHT;
     }
@@ -1113,6 +1122,15 @@ export class GameApp {
 
   private isSandboxMode(): boolean {
     return this.e2eMode || this.isDebugMode();
+  }
+
+  private spawnDebugTargets(): void {
+    this.spawnEnemyAhead(18, -7, 0, 0);
+    this.spawnEnemyAhead(26, 7, 0, 0);
+  }
+
+  private getMaxActiveEnemies(): number {
+    return this.isDebugMode() ? 2 : MAX_ACTIVE_ENEMIES;
   }
 
   private getNextOptionId<T extends string>(options: { id: T }[], current: T): T {
