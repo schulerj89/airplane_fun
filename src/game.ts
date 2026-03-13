@@ -14,7 +14,7 @@ import {
 } from "./config";
 import { InputController } from "./input";
 import { createEnemyPlaneModel, createPlayerPlaneModel } from "./models";
-import { SoundController } from "./sound";
+import { SoundController, type AudioDebugCueId, type SoundDebugState } from "./sound";
 import { UIController } from "./ui";
 
 type Phase = "title" | "playing" | "paused" | "game-over";
@@ -59,6 +59,7 @@ declare global {
     __airplaneFun?: {
       getSnapshot: () => GameSnapshot;
       getEnemyTelemetry: () => EnemyTelemetry[];
+      getAudioDebugState: () => SoundDebugState;
       sampleTerrainHeight: (x: number, z: number) => number;
       previewEnemyPursuit: (
         distance: number,
@@ -183,7 +184,11 @@ export class GameApp {
       () => {
         void this.startGame(this.selectedPlaneId, this.selectedModeId);
       },
-      (settingId) => this.cycleSetting(settingId)
+      () => this.returnToTitle(),
+      (settingId) => this.cycleSetting(settingId),
+      (cueId) => {
+        void this.playAudioDebugCue(cueId);
+      }
     );
     this.input = new InputController();
     this.sound = new SoundController();
@@ -216,11 +221,13 @@ export class GameApp {
     window.addEventListener("keydown", this.handleHotkeys);
     this.ui.showTitle();
     this.ui.updateDebug(this.getDebugState());
+    this.ui.updateAudioDebug(this.sound.getDebugState());
     this.loop();
 
     window.__airplaneFun = {
       getSnapshot: () => this.getSnapshot(),
       getEnemyTelemetry: () => this.getEnemyTelemetry(),
+      getAudioDebugState: () => this.sound.getDebugState(),
       sampleTerrainHeight: (x, z) => this.getTerrainHeightAt(x, z),
       previewEnemyPursuit: (distance, forwardDistance, lateralDistance, preferredRange, preferredSide) =>
         this.previewEnemyPursuit(distance, forwardDistance, lateralDistance, preferredRange, preferredSide),
@@ -338,6 +345,7 @@ export class GameApp {
 
     this.renderer.render(this.scene, this.camera);
     this.ui.updateDebug(this.getDebugState());
+    this.ui.updateAudioDebug(this.sound.getDebugState());
   };
 
   private updatePlayer(deltaSeconds: number): void {
@@ -347,19 +355,29 @@ export class GameApp {
 
     const yawInput = Number(this.input.isPressed("right")) - Number(this.input.isPressed("left"));
     const pitchInput = Number(this.input.isPressed("up")) - Number(this.input.isPressed("down"));
-    const throttleInput = Number(this.input.isPressed("throttle-up")) - Number(this.input.isPressed("throttle-down"));
     const terrainHeight = this.getTerrainHeightAt(this.player.position.x, this.player.position.z) + PLAYER_GROUND_CLEARANCE;
     const onGround = this.player.position.y <= terrainHeight + 0.05;
+    const throttleUpPressed = this.input.isPressed("throttle-up");
+    const brakePressed = this.input.isPressed("throttle-down");
+    const reversePressed = this.input.isPressed("reverse");
     const speedRatio = THREE.MathUtils.clamp(this.player.flight.speed / Math.max(1, this.player.definition.speed + 14), 0, 1);
 
-    const acceleration = throttleInput > 0 ? 22 : throttleInput < 0 ? -26 : 0;
+    let acceleration = 0;
+    if (throttleUpPressed) {
+      acceleration = 22;
+    } else if (reversePressed && onGround) {
+      acceleration = this.player.flight.speed > 0 ? -34 : -18;
+    } else if (brakePressed) {
+      acceleration = this.player.flight.speed > 0 ? -26 : this.player.flight.speed < 0 ? 24 : 0;
+    }
     const passiveDrag = onGround ? 4.2 : 1.6;
     const maxSpeed = this.player.definition.speed + 18;
-    this.player.flight.speed = THREE.MathUtils.clamp(
-      this.player.flight.speed + acceleration * deltaSeconds - passiveDrag * deltaSeconds,
-      0,
-      maxSpeed
-    );
+    const minSpeed = onGround ? -6 : 0;
+    const nextSpeed = this.player.flight.speed + acceleration * deltaSeconds;
+    const dragAmount = passiveDrag * deltaSeconds;
+    const dragAdjustedSpeed =
+      nextSpeed > 0 ? Math.max(0, nextSpeed - dragAmount) : nextSpeed < 0 ? Math.min(0, nextSpeed + dragAmount) : 0;
+    this.player.flight.speed = THREE.MathUtils.clamp(dragAdjustedSpeed, minSpeed, maxSpeed);
 
     const yawRate = onGround ? 0.8 : 1.5;
     this.player.flight.heading += yawInput * yawRate * (0.3 + speedRatio * 0.7) * deltaSeconds;
@@ -888,6 +906,20 @@ export class GameApp {
     this.ui.showGameOver(this.score, Math.max(1, this.wave - 1));
   }
 
+  private returnToTitle(): void {
+    this.phase = "title";
+    this.score = 0;
+    this.wave = 1;
+    this.spawnTimer = 0;
+    this.hudStatus = "Idle";
+    this.isPlayerAirborne = false;
+    this.input.reset();
+    this.ui.updatePauseState(false);
+    this.clearEntities();
+    this.clearChunks();
+    this.ui.showTitle();
+  }
+
   private togglePause(): void {
     if (this.phase === "playing") {
       this.phase = "paused";
@@ -980,6 +1012,12 @@ export class GameApp {
     if (event.code === "KeyR" && (this.phase === "playing" || this.phase === "paused")) {
       event.preventDefault();
       void this.startGame(this.selectedPlaneId);
+      return;
+    }
+
+    if (event.code === "KeyT" && (this.phase === "playing" || this.phase === "paused" || this.phase === "game-over")) {
+      event.preventDefault();
+      this.returnToTitle();
     }
   };
 
@@ -1109,6 +1147,10 @@ export class GameApp {
       return `${prefix}Airborne`;
     }
 
+    if (this.player && this.player.flight.speed < -1) {
+      return `${prefix}Reverse`;
+    }
+
     if (this.player && this.player.flight.speed > 3) {
       return this.selectedModeId === "debug" ? "Debug Roll" : "Takeoff Roll";
     }
@@ -1122,6 +1164,11 @@ export class GameApp {
 
   private isSandboxMode(): boolean {
     return this.e2eMode || this.isDebugMode();
+  }
+
+  private async playAudioDebugCue(cueId: AudioDebugCueId): Promise<void> {
+    await this.sound.playDebugCue(cueId, this.selectedPlaneId);
+    this.ui.updateAudioDebug(this.sound.getDebugState());
   }
 
   private spawnDebugTargets(): void {

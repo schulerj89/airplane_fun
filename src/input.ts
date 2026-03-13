@@ -78,6 +78,8 @@ export class InputController {
         return "throttle-up";
       case "KeyS":
         return "throttle-down";
+      case "KeyX":
+        return "reverse";
       case "ArrowUp":
         return "up";
       case "ArrowDown":

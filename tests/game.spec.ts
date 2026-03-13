@@ -18,6 +18,23 @@ test("title screen shows three airplane options", async ({ page }) => {
   await expect(page.locator(".plane-stat-grid")).toBeVisible();
 });
 
+test("title screen can be reached again from debug and standard play", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Debug Sandbox/i }).click();
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+  await expect(page.locator('[data-state="hud"]')).toBeVisible();
+
+  await page.getByRole("button", { name: "Title Screen" }).first().click();
+  await expect(page.getByRole("heading", { name: "Airplane Fun" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Standard Mission/i }).click();
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+  await expect(page.locator('[data-state="hud"]')).toBeVisible();
+
+  await setControl(page, "KeyT", "keydown");
+  await expect(page.getByRole("heading", { name: "Airplane Fun" })).toBeVisible();
+});
+
 test("debug sandbox stays flat, tree-free, and limited to parked target dummies", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Debug Sandbox/i }).click();
@@ -68,6 +85,20 @@ test("debug sandbox stays flat, tree-free, and limited to parked target dummies"
   expect(parkedTelemetry?.lateralDistance).toBeCloseTo(initialTelemetry?.lateralDistance ?? 0, 2);
 });
 
+test("reverse control backs the plane up on the runway", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  await setControl(page, "KeyX", "keydown");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getSnapshot().speed ?? 0);
+    })
+    .toBeLessThan(0);
+  await expect(page.locator('[data-role="status"]')).toHaveText("Reverse");
+  await setControl(page, "KeyX", "keyup");
+});
+
 test("settings cycle audio, camera, and debug detail levels", async ({ page }) => {
   await page.goto("/?e2e=1");
   await page.getByRole("button", { name: "Launch Mission" }).click();
@@ -101,6 +132,47 @@ test("settings cycle audio, camera, and debug detail levels", async ({ page }) =
   await debugButton.click();
   await expect(debugButton).toHaveText("Debug: Hidden");
   await expect(page.getByLabel("Debug panel")).toBeHidden();
+});
+
+test("audio debug controls expose sound state and test cues", async ({ page }) => {
+  await page.goto("/?e2e=1");
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  await page.getByRole("button", { name: "Test Explosion" }).click();
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getAudioDebugState().lastEvent ?? "missing");
+    })
+    .toBe("explosion");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__airplaneFun?.getAudioDebugState().contextState ?? "missing");
+    })
+    .not.toBe("uninitialized");
+  await expect(page.locator('[data-role="audio-status"]')).toContainText("explosion");
+});
+
+test("debug tools overlay stays inside the viewport on mobile", async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 720 } });
+  await page.goto("/?e2e=1");
+  await page.getByRole("button", { name: "Launch Mission" }).click();
+
+  const boxes = await page.evaluate(() => {
+    const tools = document.querySelector('[data-state="tools"]')?.getBoundingClientRect();
+    const controls = document.querySelector('[data-state="controls"]')?.getBoundingClientRect();
+    return {
+      toolsTop: tools?.top ?? -1,
+      toolsBottom: tools?.bottom ?? -1,
+      controlsTop: controls?.top ?? -1,
+      viewportHeight: window.innerHeight
+    };
+  });
+
+  expect(boxes.toolsTop).toBeGreaterThanOrEqual(0);
+  expect(boxes.toolsBottom).toBeLessThanOrEqual(boxes.viewportHeight);
+  expect(boxes.toolsBottom).toBeLessThanOrEqual(boxes.controlsTop - 8);
+
+  await page.close();
 });
 
 test("player can accelerate down the runway, take off, and score points", async ({ page }) => {

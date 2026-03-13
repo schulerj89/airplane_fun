@@ -8,6 +8,7 @@ import {
   PlaneDefinition,
   PlaneId
 } from "./config";
+import type { AudioDebugCueId, SoundDebugState } from "./sound";
 
 interface HudState {
   health: number;
@@ -52,6 +53,8 @@ export class UIController {
   private readonly restartButton: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
   private readonly startOverButton: HTMLButtonElement;
+  private readonly titleButton: HTMLButtonElement;
+  private readonly gameOverTitleButton: HTMLButtonElement;
   private readonly mobileControls: HTMLElement;
   private readonly gameTools: HTMLElement;
   private readonly pauseBanner: HTMLElement;
@@ -63,6 +66,7 @@ export class UIController {
   private readonly chunkCountValue: HTMLElement;
   private readonly enemyCountValue: HTMLElement;
   private readonly projectileCountValue: HTMLElement;
+  private readonly audioStatusValue: HTMLElement;
   private readonly settingButtons: Record<keyof GameSettings, HTMLButtonElement>;
 
   constructor(
@@ -76,7 +80,9 @@ export class UIController {
     onRestart: () => void,
     onPauseToggle: () => void,
     onStartOver: () => void,
-    onCycleSetting: (settingId: keyof GameSettings) => void
+    onReturnToTitle: () => void,
+    onCycleSetting: (settingId: keyof GameSettings) => void,
+    onTestAudio: (cueId: AudioDebugCueId) => void
   ) {
     this.root = document.createElement("div");
     this.root.className = "game-shell";
@@ -112,6 +118,7 @@ export class UIController {
           <div class="tool-actions">
             <button class="secondary-button" type="button" data-role="pause-toggle">Pause</button>
             <button class="secondary-button" type="button" data-role="start-over">Start Over</button>
+            <button class="secondary-button" type="button" data-role="title-screen">Title Screen</button>
           </div>
           <div class="debug-panel" aria-label="Debug panel">
             <div data-debug-detail="core"><span>FPS</span><strong data-role="debug-fps"></strong></div>
@@ -130,6 +137,16 @@ export class UIController {
               <button class="setting-button" type="button" data-setting-id="cameraZoom"></button>
               <button class="setting-button" type="button" data-setting-id="debugView"></button>
             </div>
+            <div class="audio-debug-status">
+              <span>Audio Debug</span>
+              <strong data-role="audio-status"></strong>
+            </div>
+            <div class="settings-grid audio-test-grid">
+              <button class="setting-button" type="button" data-audio-test="player-shot">Test Player Shot</button>
+              <button class="setting-button" type="button" data-audio-test="enemy-shot">Test Enemy Shot</button>
+              <button class="setting-button" type="button" data-audio-test="hit">Test Hit</button>
+              <button class="setting-button" type="button" data-audio-test="explosion">Test Explosion</button>
+            </div>
           </div>
         </section>
         <section class="game-over hidden" data-state="game-over">
@@ -137,7 +154,10 @@ export class UIController {
             <p class="eyebrow">Hull lost</p>
             <h2>Rearm and relaunch</h2>
             <p class="summary"></p>
-            <button class="secondary-button" type="button" data-role="game-over-restart">Restart</button>
+            <div class="tool-actions">
+              <button class="secondary-button" type="button" data-role="game-over-restart">Restart</button>
+              <button class="secondary-button" type="button" data-role="game-over-title">Title Screen</button>
+            </div>
           </div>
         </section>
         <section class="mobile-controls hidden" data-state="controls">
@@ -152,11 +172,12 @@ export class UIController {
             </div>
             <div class="throttle-row">
               <button data-action="throttle-up">Throttle +</button>
-              <button data-action="throttle-down">Throttle -</button>
+              <button data-action="throttle-down">Brake</button>
+              <button data-action="reverse">Reverse</button>
             </div>
           </div>
           <div class="control-stack">
-            <div class="control-hint">W/S throttle, arrows pitch, A/D yaw, P pause, R restart</div>
+            <div class="control-hint">W throttle, S brake, X reverse, arrows pitch, A/D yaw, T title</div>
             <button class="fire-button" data-action="fire">Fire</button>
           </div>
         </section>
@@ -183,6 +204,8 @@ export class UIController {
     this.restartButton = this.root.querySelector('[data-role="game-over-restart"]') as HTMLButtonElement;
     this.pauseButton = this.root.querySelector('[data-role="pause-toggle"]') as HTMLButtonElement;
     this.startOverButton = this.root.querySelector('[data-role="start-over"]') as HTMLButtonElement;
+    this.titleButton = this.root.querySelector('[data-role="title-screen"]') as HTMLButtonElement;
+    this.gameOverTitleButton = this.root.querySelector('[data-role="game-over-title"]') as HTMLButtonElement;
     this.mobileControls = this.root.querySelector(".mobile-controls") as HTMLElement;
     this.gameTools = this.root.querySelector(".game-tools") as HTMLElement;
     this.pauseBanner = this.root.querySelector(".pause-banner") as HTMLElement;
@@ -194,6 +217,7 @@ export class UIController {
     this.chunkCountValue = this.root.querySelector('[data-role="debug-chunks"]') as HTMLElement;
     this.enemyCountValue = this.root.querySelector('[data-role="debug-enemies"]') as HTMLElement;
     this.projectileCountValue = this.root.querySelector('[data-role="debug-projectiles"]') as HTMLElement;
+    this.audioStatusValue = this.root.querySelector('[data-role="audio-status"]') as HTMLElement;
     this.settingButtons = {
       audioMix: this.root.querySelector('[data-setting-id="audioMix"]') as HTMLButtonElement,
       cameraZoom: this.root.querySelector('[data-setting-id="cameraZoom"]') as HTMLButtonElement,
@@ -272,10 +296,16 @@ export class UIController {
     this.restartButton.addEventListener("click", onRestart);
     this.pauseButton.addEventListener("click", onPauseToggle);
     this.startOverButton.addEventListener("click", onStartOver);
+    this.titleButton.addEventListener("click", onReturnToTitle);
+    this.gameOverTitleButton.addEventListener("click", onReturnToTitle);
     for (const [settingId, button] of Object.entries(this.settingButtons) as [keyof GameSettings, HTMLButtonElement][]) {
       button.addEventListener("click", () => onCycleSetting(settingId));
     }
+    for (const button of Array.from(this.root.querySelectorAll("[data-audio-test]")) as HTMLButtonElement[]) {
+      button.addEventListener("click", () => onTestAudio(button.dataset.audioTest as AudioDebugCueId));
+    }
     this.updateSettings(initialSettings);
+    this.updateAudioDebug({ contextState: "uninitialized", audioMix: initialSettings.audioMix, lastEvent: "none" });
     this.updatePauseState(false);
   }
 
@@ -347,6 +377,10 @@ export class UIController {
     this.settingButtons.cameraZoom.textContent = `Camera: ${this.getOptionLabel(CAMERA_ZOOM_OPTIONS, settings.cameraZoom)}`;
     this.settingButtons.debugView.textContent = `Debug: ${this.getOptionLabel(DEBUG_VIEW_OPTIONS, settings.debugView)}`;
     this.root.dataset.debugView = settings.debugView;
+  }
+
+  updateAudioDebug(state: SoundDebugState): void {
+    this.audioStatusValue.textContent = `${state.contextState} | ${state.audioMix} | ${state.lastEvent}`;
   }
 
   private getOptionLabel<T extends string>(options: { id: T; label: string }[], value: T): string {

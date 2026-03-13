@@ -1,5 +1,13 @@
 import type { AudioMixId, PlaneId } from "./config";
 
+export type AudioDebugCueId = "player-shot" | "enemy-shot" | "hit" | "explosion";
+
+export interface SoundDebugState {
+  contextState: AudioContextState | "uninitialized";
+  audioMix: AudioMixId;
+  lastEvent: AudioDebugCueId | "none";
+}
+
 interface ShotProfile {
   primaryType: OscillatorType;
   secondaryType: OscillatorType;
@@ -96,6 +104,7 @@ export class SoundController {
   private playerShotCount = 0;
   private enemyShotCount = 0;
   private audioMix: AudioMixId = "full";
+  private lastEvent: AudioDebugCueId | "none" = "none";
 
   setAudioMix(audioMix: AudioMixId): void {
     this.audioMix = audioMix;
@@ -112,20 +121,24 @@ export class SoundController {
   }
 
   playPlayerShot(planeId: PlaneId): void {
+    this.lastEvent = "player-shot";
     this.playShot(resolvePlayerShotProfile(planeId, this.playerShotCount));
     this.playerShotCount += 1;
   }
 
   playEnemyShot(): void {
+    this.lastEvent = "enemy-shot";
     this.playShot(resolveEnemyShotProfile(this.enemyShotCount));
     this.enemyShotCount += 1;
   }
 
   playHit(): void {
+    this.lastEvent = "hit";
     this.playTone(180, 0.1, "triangle", 0.03, 95);
   }
 
   playExplosion(): void {
+    this.lastEvent = "explosion";
     if (!this.audioContext || !this.noiseBuffer) {
       return;
     }
@@ -162,6 +175,32 @@ export class SoundController {
     noise.stop(now + 0.25);
     oscillator.start(now);
     oscillator.stop(now + 0.25);
+  }
+
+  async playDebugCue(cueId: AudioDebugCueId, planeId: PlaneId): Promise<void> {
+    await this.unlock();
+    switch (cueId) {
+      case "player-shot":
+        this.playPlayerShot(planeId);
+        break;
+      case "enemy-shot":
+        this.playEnemyShot();
+        break;
+      case "hit":
+        this.playHit();
+        break;
+      case "explosion":
+        this.playExplosion();
+        break;
+    }
+  }
+
+  getDebugState(): SoundDebugState {
+    return {
+      contextState: this.audioContext?.state ?? "uninitialized",
+      audioMix: this.audioMix,
+      lastEvent: this.lastEvent
+    };
   }
 
   private playTone(
